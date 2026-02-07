@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCcw, Shuffle, Copy, Download, Upload, Info, Sparkles, Trash2, Sun, Moon, X, ChevronDown, ExternalLink, Layers, BarChart3, Wand2 } from "lucide-react";
+import { RefreshCcw, Shuffle, Copy, Download, Upload, Info, Sparkles, Trash2, Sun, Moon, X, ChevronDown, ExternalLink, Layers, BarChart3, Wand2, RotateCcw } from "lucide-react";
 
 /**
  * MTG Commander Deck Generator — v7.0
@@ -11,16 +11,26 @@ const COLORS = ["W","U","B","R","G"];
 const COLOR_LABELS = { W:"Blanc", U:"Bleu", B:"Noir", R:"Rouge", G:"Vert" };
 const MANA_BG = { W:"#f9fae5", U:"#dbeafe", B:"#e9d5ff", R:"#fecaca", G:"#bbf7d0" };
 const MECHANIC_TAGS = [
-  { key:"blink", label:"Blink / Flicker", matchers:["exile then return","flicker","phase out","enters the battlefield ","blink"] },
-  { key:"tokens", label:"Tokens", matchers:["create a token","token"] },
-  { key:"sacrifice", label:"Sacrifice", matchers:["sacrifice a","whenever you sacrifice","devour","exploit"] },
+  { key:"tokens", label:"Tokens", matchers:["create a token","token","populate"] },
+  { key:"sacrifice", label:"Sacrifice", matchers:["sacrifice a","whenever you sacrifice","devour","exploit","aristocrat"] },
   { key:"lifegain", label:"Gain de vie", matchers:["you gain","lifelink","whenever you gain life"] },
-  { key:"spellslinger", label:"Spellslinger", matchers:["instant or sorcery","prowess","magecraft","copy target instant","storm"] },
-  { key:"+1+1", label:"+1/+1 Counters", matchers:["+1/+1 counter","proliferate","evolve"] },
-  { key:"reanimator", label:"Réanimation", matchers:["return target creature card from your graveyard","reanimate","unearth","persist","undying"] },
+  { key:"+1+1", label:"+1/+1 Counters", matchers:["+1/+1 counter","proliferate","evolve","modular"] },
+  { key:"reanimator", label:"Réanimation", matchers:["return target creature card from your graveyard","reanimate","unearth","persist","undying","embalm","eternalize"] },
+  { key:"blink", label:"Blink / Flicker", matchers:["exile then return","flicker","phase out","enters the battlefield ","blink"] },
+  { key:"spellslinger", label:"Spellslinger", matchers:["instant or sorcery","prowess","magecraft","copy target instant","storm","cast from exile"] },
   { key:"landfall", label:"Landfall", matchers:["landfall","whenever a land enters the battlefield under your control","search your library for a land"] },
-  { key:"artifacts", label:"Artefacts", matchers:["artifact you control","improvise","affinity for artifacts","create a Treasure"] },
-  { key:"enchantress", label:"Enchantements", matchers:["enchantment spell","constellation","aura","enchantress"] },
+  { key:"artifacts", label:"Artefacts", matchers:["artifact you control","improvise","affinity for artifacts","create a treasure","metalcraft"] },
+  { key:"enchantress", label:"Enchantements", matchers:["enchantment spell","constellation","aura","enchantress","enchant creature"] },
+  { key:"mill", label:"Mill", matchers:["mill","put the top","cards from the top of their library into their graveyard","self-mill"] },
+  { key:"voltron", label:"Voltron", matchers:["equip","equipped creature","attach","aura you control","enchanted creature gets"] },
+  { key:"tribal", label:"Tribal / Typal", matchers:["creatures you control get","creature of the chosen type","changeling","lord","share a creature type"] },
+  { key:"wheels", label:"Wheels / Discard", matchers:["each player discards","discard your hand then draw","wheel","madness","whenever a player discards"] },
+  { key:"topdeck", label:"Top Deck", matchers:["top of your library","scry","look at the top","miracle","cascade"] },
+  { key:"theft", label:"Vol / Threaten", matchers:["gain control","until end of turn","steal","act of treason","control of target"] },
+  { key:"stax", label:"Stax / Tax", matchers:["can't cast","additional cost","each opponent","opponents can't","ward","tax"] },
+  { key:"storm", label:"Storm / Combo", matchers:["storm","copy this spell","each spell you cast","magecraft","whenever you cast"] },
+  { key:"treasure", label:"Trésors", matchers:["create a treasure","treasure token","sacrifice a treasure","whenever a treasure"] },
+  { key:"graveyard", label:"Graveyard", matchers:["from your graveyard","flashback","retrace","dredge","delve","escape","whenever a creature dies"] },
 ];
 const RE = {
   RAMP: /(add \{|search your library for a land|treasure token)/i,
@@ -337,7 +347,7 @@ export default function App(){
 
   const commanderSectionRef = useRef(null);
   const selectedCommanderCard = useCommanderResolution(commanderMode, chosenCommander, setDesiredCI, setError);
-  const toggleMechanic=(key)=> setMechanics(prev=> prev.includes(key)? prev.filter(k=>k!==key) : (prev.length>=3?(setLimitNotice("Maximum 3 mécaniques"), setTimeout(()=>setLimitNotice(""),1500), prev):[...prev,key]));
+  const toggleMechanic=(key)=> setMechanics(prev=> prev.includes(key)? prev.filter(k=>k!==key) : (prev.length>=5?(setLimitNotice("Maximum 5 mécaniques"), setTimeout(()=>setLimitNotice(""),1500), prev):[...prev,key]));
 
   /*********** Generation ***********/
   const mechanicScore=(card)=> mechanics.length? MECHANIC_TAGS.reduce((s,m)=> s + (mechanics.includes(m.key) && m.matchers.some(k=>oracle(card).includes(k.toLowerCase()))?1:0), 0) : 0;
@@ -439,6 +449,9 @@ export default function App(){
   const removeUploadedFile=(id)=> setUploadedFiles(prev=>{ const next=prev.filter(x=>x.id!==id); const merged=new Map(); for(const file of next){ for(const [k,q] of file.map){ merged.set(k,(merged.get(k)||0)+q); } } setOwnedMap(merged); return next; });
   const clearCollection=()=>{ setOwnedMap(new Map()); setUploadedFiles([]); };
 
+  // Reset all
+  const resetAll=()=>{ setLoading(false); setError(""); setDeck(null); setCommanderMode("random"); setChosenCommander(""); setAllowPartner(true); setAllowBackground(true); setDesiredCI(""); setTargetLands(37); setDeckBudget(0); setMechanics([]); setLimitNotice(""); setWeightOwned(1.0); setWeightEdhrec(1.0); setTargets({ ramp:{min:10,max:12}, draw:{min:9,max:12}, removal:{min:8,max:10}, wraths:{min:3,max:5} }); clearCollection(); setShowModal(false); setModalCard(null); setModalOwned(false); };
+
   // Rebalance
   const reequilibrer=async()=>{ if(!deck) return; try{ setLoading(true); const ci=deck.colorIdentity; const base=`legal:commander game:paper ${identityToQuery(ci)} -is:funny -type:land -type:background`; let page=await sf.search(base,{unique:"cards", order:"edhrec"}); let pool=page.data; if(page.has_more){ const next=await fetch(page.next_page).then(r=>r.json()); pool=pool.concat(next.data||[]);} pool=distinctByName(pool).filter(isCommanderLegal); const currentNames=new Set(Object.keys(deck.nonlands)); const currentObjs=pool.filter(c=> currentNames.has(nameOf(c))); const others=pool.filter(c=> !currentNames.has(nameOf(c))); const totalBudget=deck.budget||0; let spent=0; const balanced=balanceSpells(currentObjs, others, totalBudget, spent); const newNonlands=Object.fromEntries(balanced.picks.map(c=>[nameOf(c),1])); const newNonlandCards=balanced.picks.map(bundleCard); setDeck(prev=>({...prev, nonlands:newNonlands, nonlandCards:newNonlandCards, balanceCounts:balanced.counts, balanceTargets:targets })); } finally { setLoading(false); } };
 
@@ -479,6 +492,7 @@ export default function App(){
               {theme==='dark' ? <Sun className="h-4 w-4"/> : <Moon className="h-4 w-4"/>}
             </button>
             {deck && <>
+              <button className="btn-ghost rounded-full p-2" onClick={resetAll} aria-label="Recommencer à zéro" title="Reset"><RotateCcw className="h-4 w-4"/></button>
               <button className="btn-ghost rounded-full p-2" onClick={copyList} aria-label="Copier la liste"><Copy className="h-4 w-4"/></button>
               <button className="btn text-xs hidden sm:inline-flex" onClick={exportJson}><Download className="h-3.5 w-3.5"/>JSON</button>
               <button className="btn-primary text-xs hidden sm:inline-flex" onClick={exportTxt}><Download className="h-3.5 w-3.5"/>Export TXT</button>
@@ -542,7 +556,7 @@ export default function App(){
 
             {/* Mechanics */}
             <section className="panel p-5">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted mb-3">Mécaniques <span className="text-xs font-normal">(max 3)</span></h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted mb-3">Mécaniques <span className="text-xs font-normal">(max 5)</span></h2>
               <div className="flex flex-wrap gap-1.5">
                 {MECHANIC_TAGS.map(m=> (
                   <button key={m.key} className={`chip ${mechanics.includes(m.key)?'chip-active':''}`} onClick={()=>toggleMechanic(m.key)}>
@@ -801,6 +815,7 @@ export default function App(){
                   <button className="btn-primary" onClick={exportTxt}><Download className="h-4 w-4"/>Export TXT</button>
                   <button className="btn" onClick={reequilibrer} disabled={loading}><Sparkles className="h-4 w-4"/>Rééquilibrer</button>
                   <button className="btn-primary" onClick={generate} disabled={loading}><Shuffle className="h-4 w-4"/>Regénérer</button>
+                  <button className="btn" onClick={resetAll}><RotateCcw className="h-4 w-4"/>Recommencer</button>
                 </div>
               </div>
             )}
