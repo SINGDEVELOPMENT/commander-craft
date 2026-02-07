@@ -1,74 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCcw, Shuffle, Copy, Download, Upload, Settings2, Info, Sparkles, Trash2, Sun, Moon } from "lucide-react";
+import { RefreshCcw, Shuffle, Copy, Download, Upload, Info, Sparkles, Trash2, Sun, Moon, X, ChevronDown, ExternalLink, Layers, BarChart3, Wand2 } from "lucide-react";
 
 /**
- * MTG Commander Deck Generator — v6.6
- *
- * Changes from v6.5 (mobile-only UX earlier) + NEW:
- *  - Functional Dark / Light mode toggle with persistence (localStorage) and system default.
- *  - No desktop layout changes; the toggle is just an extra header action button.
+ * MTG Commander Deck Generator — v7.0
+ * Complete UI/UX redesign with Tailwind CSS, modern design system, accessibility.
  */
-
-/***************** Theme (Glass) with Dark/Light *****************/
-const THEME_CSS = `
-  :root{
-    --halo:#171717;
-    --bg0:#000; --bg1:#0b0b0b; --panel:rgba(255,255,255,.08); --panel-strong:rgba(255,255,255,.12);
-    --border:rgba(255,255,255,.18); --text:#fff; --muted:rgba(255,255,255,.65);
-    --btn-bg:rgba(255,255,255,.08); --btn-hover-bg:rgba(255,255,255,.16); --btn-active-bg:rgba(255,255,255,.28); --btn-active-ring:rgba(255,255,255,.65);
-    --primary:#fff; --primary-text:#111; --warn:#f59e0b;
-  }
-
-  /* Light overrides when [data-theme="light"] on <html> */
-  [data-theme="light"]{
-    --bg0:#ffffff; --bg1:#f7f7f7; --panel:rgba(0,0,0,.04); --panel-strong:rgba(0,0,0,.08);
-    --border:rgba(0,0,0,.18); --text:#111; --muted:rgba(0,0,0,.65);
-    --btn-bg:rgba(0,0,0,.06); --btn-hover-bg:rgba(0,0,0,.12); --btn-active-bg:rgba(0,0,0,.18); --btn-active-ring:rgba(0,0,0,.55);
-    --primary:#111; --primary-text:#fff; --warn:#d97706; --halo:#ffffff;
-  }
-
-  html,body,#root{ background: radial-gradient(1200px 1200px at 20% -10%, var(--halo), var(--bg0) 60%), linear-gradient(160deg, var(--bg1), var(--bg0)); color:var(--text); }
-  .glass{ background:var(--panel); -webkit-backdrop-filter:saturate(130%) blur(14px); backdrop-filter:saturate(130%) blur(14px); border:1px solid var(--border); border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.35) inset, 0 20px 40px rgba(0,0,0,.35); }
-  .glass-strong{ background:var(--panel-strong); }
-  .muted{ color:var(--muted); }
-  .btn{ display:inline-flex; align-items:center; gap:8px; background:var(--btn-bg); border:1px solid var(--border); color:var(--text); border-radius:12px; padding:10px 14px; transition:background .15s, filter .15s, box-shadow .15s, transform .04s; }
-  .btn:hover{ background:var(--btn-hover-bg); }
-  .btn:focus-visible{ outline:none; box-shadow:0 0 0 2px rgba(0,0,0,.6), 0 0 0 3px var(--btn-active-ring); }
-  .btn:active{ transform:translateY(1px); }
-  .btn.glass-strong{ background:var(--btn-active-bg); border-color:rgba(255,255,255,.5); box-shadow:0 0 0 1px rgba(255,255,255,.35), 0 6px 18px rgba(255,255,255,.12) inset; }
-  .btn.glass-strong:hover{ background:rgba(255,255,255,.34); }
-  .btn-primary{ display:inline-flex; align-items:center; gap:8px; background:var(--primary); color:var(--primary-text); border:1px solid rgba(0,0,0,.12); border-radius:16px; padding:10px 16px; box-shadow:0 6px 20px rgba(255,255,255,.12); }
-  .btn-primary:hover{ filter:brightness(.95); }
-  .btn-primary:focus-visible{ outline:none; box-shadow:0 0 0 3px #000, 0 0 0 5px rgba(255,255,255,.85); }
-  .input{ background:rgba(255,255,255,.06); border:1px solid var(--border); color:var(--text); border-radius:10px; padding:8px 10px; }
-  .input::placeholder{ color:rgba(255,255,255,.45); }
-  .list{ background:rgba(0,0,0,.7); border:1px solid var(--border); border-radius:12px; }
-  .autocomplete-list{ max-height:228px; overflow-y:auto; }
-  .bar-bg{ background:rgba(255,255,255,.08); height:8px; border-radius:999px; overflow:hidden; }
-  .bar-fill{ background:linear-gradient(90deg,#fff,rgba(255,255,255,.7)); height:8px; }
-  .dropzone{ border:2px dashed rgba(255,255,255,.45); background:rgba(255,255,255,.04); border-radius:16px; padding:22px; text-align:center; cursor:pointer; transition:background .15s, border-color .15s, box-shadow .15s; }
-  .dropzone:hover{ background:rgba(255,255,255,.08); }
-  .dropzone.drag{ background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.85); box-shadow:0 0 0 3px rgba(255,255,255,.2) inset; }
-  .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
-  .mana{ display:inline-flex; align-items:center; gap:4px; }
-  .badge{ position:absolute; top:4px; right:4px; background:rgba(0,0,0,.7); color:#fff; font-size:11px; padding:2px 6px; border-radius:999px; border:1px solid rgba(255,255,255,.2) }
-
-  /* ===== Mobile-only UX tweaks ===== */
-  @media (max-width: 767px){
-    .header-wrap{ display:flex; flex-direction:column; align-items:flex-start; gap:12px; }
-    .header-actions{ width:100%; display:grid; grid-template-columns: 1fr; gap:8px; }
-    .header-actions .btn, .header-actions .btn-primary{ width:100%; justify-content:center; }
-    .section-anchor{ scroll-margin-top: 12px; }
-  }
-
-  /* Respect reduced motion for the auto-scroll */
-  @media (prefers-reduced-motion: reduce){
-    .smooth-scroll-disabled{ scroll-behavior: auto !important; }
-  }
-`;
 
 /***************** Utils & Const *****************/
 const COLORS = ["W","U","B","R","G"];
+const COLOR_LABELS = { W:"Blanc", U:"Bleu", B:"Noir", R:"Rouge", G:"Vert" };
+const MANA_BG = { W:"#f9fae5", U:"#dbeafe", B:"#e9d5ff", R:"#fecaca", G:"#bbf7d0" };
 const MECHANIC_TAGS = [
   { key:"blink", label:"Blink / Flicker", matchers:["exile then return","flicker","phase out","enters the battlefield ","blink"] },
   { key:"tokens", label:"Tokens", matchers:["create a token","token"] },
@@ -77,8 +18,8 @@ const MECHANIC_TAGS = [
   { key:"spellslinger", label:"Spellslinger", matchers:["instant or sorcery","prowess","magecraft","copy target instant","storm"] },
   { key:"+1+1", label:"+1/+1 Counters", matchers:["+1/+1 counter","proliferate","evolve"] },
   { key:"reanimator", label:"Réanimation", matchers:["return target creature card from your graveyard","reanimate","unearth","persist","undying"] },
-  { key:"landfall", label:"Landfall / Terrains", matchers:["landfall","whenever a land enters the battlefield under your control","search your library for a land"] },
-  { key:"artifacts", label:"Artifacts", matchers:["artifact you control","improvise","affinity for artifacts","create a Treasure"] },
+  { key:"landfall", label:"Landfall", matchers:["landfall","whenever a land enters the battlefield under your control","search your library for a land"] },
+  { key:"artifacts", label:"Artefacts", matchers:["artifact you control","improvise","affinity for artifacts","create a Treasure"] },
   { key:"enchantress", label:"Enchantements", matchers:["enchantment spell","constellation","aura","enchantress"] },
 ];
 const RE = {
@@ -109,21 +50,22 @@ const sf = {
   async namedExact(n){ const r=await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(n)}`); if(!r.ok) throw new Error(`Nom introuvable: ${n}`); return r.json(); },
 };
 
-/***************** Mana Cost (colored circles with labels) *****************/
+/***************** Mana Cost *****************/
 const COLOR_HEX = { W:'#fffcd5', U:'#cce6ff', B:'#d6ccff', R:'#ffd6cc', G:'#d5ffd6', C:'#cccccc', X:'#cccccc', S:'#b9d9ff' };
 const isDigit = (s)=> /^\d+$/.test(s);
 const tokenizeMana = (cost)=> (cost? (cost.match(/\{[^}]+\}/g)||[]).map(x=>x.slice(1,-1)) : []);
 const normalize = (tok)=> tok.toUpperCase().replace(/\s+/g,'');
 const partsOf = (tok)=> normalize(tok).split('/');
+
 function ManaDot({label, colors}){
   const bg = colors.length===1
     ? { backgroundColor: colors[0] }
     : { backgroundImage: `linear-gradient(135deg, ${colors[0]} 0 50%, ${colors[1]} 50% 100%)` };
-  const fs = label.length>=3 ? 8 : 10;
+  const fs = label.length>=3 ? 7 : 9;
   return (
-    <span title={`{${label}}`} style={{position:'relative',display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,borderRadius:'50%',border:'1px solid #333',fontSize:fs,fontWeight:800,color:'#000'}}>
-      <span style={{position:'absolute',inset:0,borderRadius:'50%',...bg}}/>
-      <span style={{position:'relative'}}>{label}</span>
+    <span title={`{${label}}`} className="relative inline-flex items-center justify-center rounded-full border border-black/20 shadow-sm" style={{width:18,height:18}}>
+      <span className="absolute inset-0 rounded-full" style={bg}/>
+      <span className="relative text-black" style={{fontSize:fs,fontWeight:800,lineHeight:1}}>{label}</span>
     </span>
   );
 }
@@ -131,8 +73,8 @@ function colorsForToken(tok){
   const parts = partsOf(tok);
   if(parts.length===1){
     const p = parts[0];
-    if(isDigit(p)) return ['#dddddd']; // colorless N
-    if(p.endsWith('P')) return [COLOR_HEX[p[0]]||'#eeeeee']; // Phyrexian (e.g., G/P)
+    if(isDigit(p)) return ['#dddddd'];
+    if(p.endsWith('P')) return [COLOR_HEX[p[0]]||'#eeeeee'];
     return [COLOR_HEX[p]||'#eeeeee'];
   }
   const colors = parts.filter(x=>!isDigit(x) && x!=='P').map(x=> COLOR_HEX[x] || '#eeeeee');
@@ -151,9 +93,6 @@ function ManaCost({cost}){
 }
 
 /***************** Hooks *****************/
-function useInjectCss(css){
-  useEffect(()=>{ const st=document.createElement('style'); st.innerHTML=css; document.head.appendChild(st); return ()=>document.head.removeChild(st); },[css]);
-}
 function useCommanderResolution(mode, chosen, setCI, setError){
   const [card,setCard]=useState(null);
   useEffect(()=>{ let ok=true; (async()=>{
@@ -179,6 +118,7 @@ async function searchCommandersAnyLang(q){
     raw: card,
   }));
 }
+
 function CommanderAutocomplete({ value, onSelect }){
   const [query,setQuery]=useState(value||"");
   const [sugs,setSugs]=useState([]);
@@ -189,18 +129,18 @@ function CommanderAutocomplete({ value, onSelect }){
   useEffect(()=>{ const q=query.trim(); if(q.length<2){ setSugs([]); setOpen(false); return; } const ac=new AbortController(); const run=async()=>{ setLoading(true); try{ const items=await searchCommandersAnyLang(q); setSugs(items); setOpen(true);}catch(e){ if(e.name!=="AbortError"){ setSugs([]); setOpen(false);} } finally{ setLoading(false);} }; const t=setTimeout(run,220); return ()=>{ ac.abort(); clearTimeout(t); }; },[query]);
   return (
     <div className="relative" ref={boxRef}>
-      <label className="block mb-1 text-sm muted">Commandant (FR ou EN)</label>
-      <input className="w-full input focus:outline-none focus:ring-2 focus:ring-white/50" placeholder="Ex: Etali, tempête primordiale / Etali, Primal Storm" value={query} onChange={e=>{setQuery(e.target.value); setOpen(true);}}/>
+      <label className="block mb-1.5 text-xs font-medium text-muted">Commandant (FR ou EN)</label>
+      <input className="input" placeholder="Ex: Etali, tempête primordiale" value={query} onChange={e=>{setQuery(e.target.value); setOpen(true);}} aria-label="Rechercher un commandant" aria-expanded={open} role="combobox" aria-autocomplete="list"/>
       {open && (
-        <div className="absolute z-20 mt-2 w-full list shadow-2xl autocomplete-list">
-          {loading && <div className="px-3 py-2 text-sm muted">Recherche…</div>}
-          {!loading && sugs.length===0 && <div className="px-3 py-2 text-sm muted">Aucun commandant trouvé</div>}
+        <div className="absolute z-30 mt-2 w-full autocomplete-list" role="listbox">
+          {loading && <div className="px-4 py-3 text-sm text-muted">Recherche…</div>}
+          {!loading && sugs.length===0 && <div className="px-4 py-3 text-sm text-muted">Aucun commandant trouvé</div>}
           {!loading && sugs.map(s=> (
-            <button key={s.id} className="w-full text-left px-3 py-2 list-item flex items-center gap-3" onClick={()=>{ onSelect(s.display); setQuery(s.display); setOpen(false); }}>
-              {s.image ? (<img src={s.image} alt="" className="w-10 h-14 object-cover rounded"/>) : (<div className="w-10 h-14 glass-strong"/>) }
-              <div>
-                <div>{s.display}</div>
-                <div className="text-[11px] muted">{s.type_line}</div>
+            <button key={s.id} className="autocomplete-item" role="option" onClick={()=>{ onSelect(s.display); setQuery(s.display); setOpen(false); }}>
+              {s.image ? (<img src={s.image} alt="" className="w-10 h-14 object-cover rounded-lg shadow-sm" loading="lazy"/>) : (<div className="w-10 h-14 rounded-lg" style={{background:'var(--surface-strong)'}}/>) }
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">{s.display}</div>
+                <div className="text-xs text-muted truncate">{s.type_line}</div>
               </div>
             </button>
           ))}
@@ -220,62 +160,106 @@ function FileDrop({ onFiles }){
   const onDragLeave = (e)=>{ e.preventDefault(); setDrag(false); };
   const onDrop = (e)=>{ e.preventDefault(); setDrag(false); const files = Array.from(e.dataTransfer?.files||[]); if(files.length) onFiles(files); };
   return (
-    <div className={`dropzone ${drag? 'drag':''}`} onClick={openPicker} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
-      <div className="flex flex-col items-center gap-2">
-        <Upload className="h-6 w-6"/>
-        <div className="text-sm font-medium">Cliquer pour choisir des fichiers</div>
-        <div className="text-xs muted">… ou dépose-les ici (TXT, CSV/TSV, JSON)</div>
-        <button type="button" className="mt-3 btn-primary">Importer ma collection</button>
+    <div className={`dropzone ${drag? 'drag':''}`} onClick={openPicker} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop} role="button" tabIndex={0} aria-label="Importer des fichiers de collection" onKeyDown={(e)=>{ if(e.key==='Enter'||e.key===' ') openPicker(); }}>
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{background:'var(--accent-subtle)'}}>
+          <Upload className="h-5 w-5" style={{color:'var(--accent)'}}/>
+        </div>
+        <div>
+          <div className="text-sm font-medium">Glisse tes fichiers ici</div>
+          <div className="text-xs text-muted mt-1">ou clique pour choisir — TXT, CSV/TSV, JSON</div>
+        </div>
       </div>
-      <input ref={inputRef} type="file" accept=".txt,.csv,.tsv,.tab,.json" className="sr-only" multiple onChange={handleChange}/>
+      <input ref={inputRef} type="file" accept=".txt,.csv,.tsv,.tab,.json" className="sr-only" multiple onChange={handleChange} aria-hidden="true"/>
     </div>
   );
 }
 
+/***************** Toggle *****************/
+function Toggle({checked, onChange, label, description}){
+  return (
+    <label className="flex items-center justify-between gap-3 cursor-pointer group">
+      <div className="min-w-0">
+        <div className="text-sm font-medium">{label}</div>
+        {description && <div className="text-xs text-muted mt-0.5">{description}</div>}
+      </div>
+      <button type="button" role="switch" aria-checked={checked} onClick={()=>onChange(!checked)}
+        className="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2"
+        style={{background: checked ? 'var(--accent)' : 'var(--surface-strong)', border: `1px solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`}}>
+        <span className="inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200" style={{transform: checked ? 'translateX(22px)' : 'translateX(3px)'}}/>
+      </button>
+    </label>
+  );
+}
+
 /***************** UI Bits *****************/
-function Progress({label, value, targetMin, targetMax}){ const pct=Math.min(100, Math.round((value/Math.max(1,targetMin))*100)); return (
-  <div>
-    <div className="flex justify-between text-xs mb-1"><span>{label}</span><span className="muted">{value} / {targetMin}–{targetMax}</span></div>
-    <div className="bar-bg"><div className="bar-fill" style={{width:`${pct}%`}}/></div>
-  </div>
-); }
+function Progress({label, value, targetMin, targetMax}){
+  const pct=Math.min(100, Math.round((value/Math.max(1,targetMin))*100));
+  const met = value >= targetMin;
+  return (
+    <div>
+      <div className="flex justify-between items-baseline mb-1.5">
+        <span className="text-sm font-medium">{label}</span>
+        <span className="text-xs text-muted">
+          <span className="font-semibold" style={{color: met ? 'var(--success)' : 'var(--text)'}}>{value}</span> / {targetMin}–{targetMax}
+        </span>
+      </div>
+      <div className="progress-track"><div className="progress-fill animate-bar-fill" style={{width:`${pct}%`}}/></div>
+    </div>
+  );
+}
+
 function CardTile({card, onOpen, qty, owned}){
   return (
-    <button className="relative glass-strong rounded-lg p-2 flex gap-3 text-left hover:bg-white/15" onClick={()=>onOpen(card, owned)}>
+    <button className="card-tile" onClick={()=>onOpen(card, owned)} aria-label={`Voir ${card.name}`}>
       {qty ? <span className="badge">x{qty}</span> : null}
       {card.small ? (
-        <img src={card.small} alt={card.name} className="w-12 h-16 object-cover rounded"/>
+        <img src={card.small} alt={card.name} className="w-12 h-16 object-cover rounded-lg shadow-sm" loading="lazy"/>
       ) : (
-        <div className="w-12 h-16 glass-strong rounded"/>
+        <div className="w-12 h-16 rounded-lg" style={{background:'var(--surface-strong)'}}/>
       )}
-      <div className="min-w-0">
-        <div className="truncate font-medium flex items-center gap-1">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium flex items-center gap-1.5">
           <span className="truncate">{card.name}</span>
-          {owned && (
-            <span style={{ color:'limegreen', fontWeight:'bold' }} title="Carte présente dans votre collection">✓</span>
-          )}
+          {owned && <span className="owned-check" title="Dans votre collection">✓</span>}
         </div>
-        {card.mana_cost && <div className="text-xs muted"><ManaCost cost={card.mana_cost}/></div>}
+        {card.mana_cost && <div className="mt-1"><ManaCost cost={card.mana_cost}/></div>}
       </div>
     </button>
   );
 }
+
 function CardModal({open, card, owned, onClose}){
   if(!open||!card) return null;
   const price = (Number(card.prices?.eur)||Number(card.prices?.eur_foil)||0).toFixed(2);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
-      <div className="bg-[#111] border border-white/20 rounded-2xl max-w-3xl w-full grid md:grid-cols-2 gap-4 p-4" onClick={(e)=>e.stopPropagation()}>
-        {card.image && <img src={card.image} alt={card.name} className="w-full rounded-lg object-cover" />}
-        <div className="space-y-2 min-w-0">
-          <h4 className="text-xl font-semibold flex items-center gap-2">
-            {card.name}
-            {owned && (<span style={{ color:'limegreen', fontWeight:'bold' }} title="Carte présente dans votre collection">✓</span>)}
-          </h4>
-          {card.mana_cost && <div className="text-sm"><ManaCost cost={card.mana_cost}/></div>}
-          {card.oracle_en && <div className="text-sm whitespace-pre-line">{card.oracle_en}</div>}
-          <div className="text-sm muted">Prix estimé: {price}€</div>
-          {card.scryfall_uri && <a href={card.scryfall_uri} target="_blank" rel="noreferrer" className="btn inline-flex">Voir sur Scryfall</a>}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" style={{background:'rgba(0,0,0,0.6)', backdropFilter:'blur(8px)'}} onClick={onClose} role="dialog" aria-modal="true" aria-label={card.name}>
+      <div className="relative w-full max-w-2xl rounded-2xl overflow-hidden animate-slide-up" style={{background:'var(--bg)', border:'1px solid var(--border-strong)', boxShadow:'var(--shadow-lg)'}} onClick={(e)=>e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-3 right-3 z-10 btn-ghost rounded-full p-2" aria-label="Fermer"><X className="h-5 w-5"/></button>
+        <div className="grid md:grid-cols-2 gap-0">
+          {card.image && (
+            <div className="p-4 flex items-center justify-center" style={{background:'var(--surface)'}}>
+              <img src={card.image} alt={card.name} className="w-full max-w-[280px] rounded-xl shadow-lg"/>
+            </div>
+          )}
+          <div className="p-6 space-y-4">
+            <div>
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                {card.name}
+                {owned && <span className="owned-check">✓</span>}
+              </h3>
+              {card.mana_cost && <div className="mt-2"><ManaCost cost={card.mana_cost}/></div>}
+            </div>
+            {card.oracle_en && <div className="text-sm whitespace-pre-line leading-relaxed" style={{color:'var(--text-secondary)'}}>{card.oracle_en}</div>}
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-muted">Prix: <span className="font-semibold" style={{color:'var(--text)'}}>{price}€</span></span>
+            </div>
+            {card.scryfall_uri && (
+              <a href={card.scryfall_uri} target="_blank" rel="noreferrer" className="btn inline-flex text-sm">
+                <ExternalLink className="h-4 w-4"/>Voir sur Scryfall
+              </a>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -314,14 +298,12 @@ const primaryTypeLabel = (tl)=>{
 
 /***************** App *****************/
 export default function App(){
-  useInjectCss(THEME_CSS);
-
-  // THEME: persist + system default; no layout change
+  // Theme
   const initialTheme = useMemo(()=>{
     try{
       const saved = localStorage.getItem('theme');
       if(saved==='dark' || saved==='light') return saved;
-      if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+      if(window.matchMedia?.('(prefers-color-scheme: dark)').matches) return 'dark';
       return 'dark';
     }catch{ return 'dark'; }
   },[]);
@@ -353,12 +335,9 @@ export default function App(){
   const [modalCard, setModalCard] = useState(null);
   const [modalOwned, setModalOwned] = useState(false);
 
-  // NEW: section ref for auto-scroll (mobile only)
   const commanderSectionRef = useRef(null);
-
-  // Commander (resolved when select mode)
   const selectedCommanderCard = useCommanderResolution(commanderMode, chosenCommander, setDesiredCI, setError);
-  const toggleMechanic=(key)=> setMechanics(prev=> prev.includes(key)? prev.filter(k=>k!==key) : (prev.length>=3?(setLimitNotice("Maximum 3 mécaniques à la fois"), setTimeout(()=>setLimitNotice(""),1500), prev):[...prev,key]));
+  const toggleMechanic=(key)=> setMechanics(prev=> prev.includes(key)? prev.filter(k=>k!==key) : (prev.length>=3?(setLimitNotice("Maximum 3 mécaniques"), setTimeout(()=>setLimitNotice(""),1500), prev):[...prev,key]));
 
   /*********** Generation ***********/
   const mechanicScore=(card)=> mechanics.length? MECHANIC_TAGS.reduce((s,m)=> s + (mechanics.includes(m.key) && m.matchers.some(k=>oracle(card).includes(k.toLowerCase()))?1:0), 0) : 0;
@@ -437,14 +416,14 @@ export default function App(){
         budget:totalBudget, spent:Number(spent.toFixed(2)), balanceTargets:targets, balanceCounts:countCats(pickedSpells) });
     }catch(e){ setError(e.message||String(e)); } finally{ setLoading(false); } };
 
-  // Auto-scroll to Commander on mobile after generation
+  // Auto-scroll on mobile
   useEffect(()=>{
     if(!deck) return;
-    const isSmall = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 767px)').matches;
-    if(!isSmall) return; // desktop unchanged
+    const isSmall = window.matchMedia?.('(max-width: 767px)').matches;
+    if(!isSmall) return;
     const el = commanderSectionRef.current;
     if(!el) return;
-    const prefersReduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if(!prefersReduced){ el.scrollIntoView({ behavior:'smooth', block:'start' }); } else { el.scrollIntoView(); }
   }, [deck]);
 
@@ -455,7 +434,7 @@ export default function App(){
   const exportJson=()=>{ if(deck) download("commander-deck.json", JSON.stringify(deck,null,2)); };
   const copyList=()=>{ if(!deck) return; const lines=[`// CI: ${deck.colorIdentity||"(Colorless)"} • Budget: ${deck.budget||0}€ • Coût estimé: ${deck.spent||0}€`, ...deck.commanders.map(c=>`1 ${c} // Commander`), ...Object.entries(deck.nonlands).map(([n,q])=>`${q} ${n}`), ...Object.entries(deck.lands).map(([n,q])=>`${q} ${n}`)]; navigator.clipboard.writeText(lines.join("\n")); };
 
-  /******** Collection (multi-files) ********/
+  /******** Collection ********/
   const handleCollectionFile=async(f)=>{ if(!f) return; const parsed=await parseCollectionFile(f); const entry={ id:`${Date.now()}-${Math.random().toString(16).slice(2)}`, name:f.name, map:parsed }; setUploadedFiles(prev=>{ const next=[...prev,entry]; const merged=new Map(); for(const file of next){ for(const [k,q] of file.map){ merged.set(k,(merged.get(k)||0)+q); } } setOwnedMap(merged); return next; }); };
   const removeUploadedFile=(id)=> setUploadedFiles(prev=>{ const next=prev.filter(x=>x.id!==id); const merged=new Map(); for(const file of next){ for(const [k,q] of file.map){ merged.set(k,(merged.get(k)||0)+q); } } setOwnedMap(merged); return next; });
   const clearCollection=()=>{ setOwnedMap(new Map()); setUploadedFiles([]); };
@@ -464,11 +443,8 @@ export default function App(){
   const reequilibrer=async()=>{ if(!deck) return; try{ setLoading(true); const ci=deck.colorIdentity; const base=`legal:commander game:paper ${identityToQuery(ci)} -is:funny -type:land -type:background`; let page=await sf.search(base,{unique:"cards", order:"edhrec"}); let pool=page.data; if(page.has_more){ const next=await fetch(page.next_page).then(r=>r.json()); pool=pool.concat(next.data||[]);} pool=distinctByName(pool).filter(isCommanderLegal); const currentNames=new Set(Object.keys(deck.nonlands)); const currentObjs=pool.filter(c=> currentNames.has(nameOf(c))); const others=pool.filter(c=> !currentNames.has(nameOf(c))); const totalBudget=deck.budget||0; let spent=0; const balanced=balanceSpells(currentObjs, others, totalBudget, spent); const newNonlands=Object.fromEntries(balanced.picks.map(c=>[nameOf(c),1])); const newNonlandCards=balanced.picks.map(bundleCard); setDeck(prev=>({...prev, nonlands:newNonlands, nonlandCards:newNonlandCards, balanceCounts:balanced.counts, balanceTargets:targets })); } finally { setLoading(false); } };
 
   const deckSize = useMemo(()=>{ if(!deck) return 0; const cmd=deck.commanders?.length||0; const nl=Object.values(deck?.nonlands||{}).reduce((a,b)=>a+b,0); const ld=Object.values(deck?.lands||{}).reduce((a,b)=>a+b,0); return cmd+nl+ld; },[deck]);
-
   const nonlandsByType = useMemo(()=>{ if(!deck?.nonlandCards) return {}; const groups = {}; for(const c of deck.nonlandCards){ const k = primaryTypeLabel(c.type_line); (groups[k] ||= []).push(c); } const order = ["Créatures","Artefacts","Enchantements","Éphémères","Rituels","Planeswalkers","Batailles","Autres"]; const sorted = {}; for(const k of order){ if(groups[k]) sorted[k]=groups[k]; } return sorted; },[deck]);
-
   const isOwned = (cardName)=> ownedMap.has((cardName||"").toLowerCase());
-
   const stats = useMemo(()=>{
     if(!deck) return null;
     const own = new Map(ownedMap);
@@ -477,308 +453,366 @@ export default function App(){
     (deck.commanders||[]).forEach(n=> ownedCount += take(n,1));
     Object.entries(deck.nonlands||{}).forEach(([n,q])=> ownedCount += take(n,q));
     Object.entries(deck.lands||{}).forEach(([n,q])=> ownedCount += take(n,q));
-
     const total=deckSize;
     const ownedPct = total? Math.round((ownedCount/total)*100) : 0;
-
     const cmcCards = [...(deck.commandersFull||[]), ...(deck.nonlandCards||[])];
     const cmcVals = cmcCards.map(c=> Number(c.cmc)||0);
     const avgCmc = cmcVals.length? (cmcVals.reduce((a,b)=>a+b,0)/cmcVals.length) : 0;
-
     const typeCounts = Object.fromEntries(Object.entries(nonlandsByType).map(([k, arr])=> [k, arr.length]));
-
     return { ownedCount, ownedPct, avgCmc:Number(avgCmc.toFixed(2)), typeCounts };
   },[deck, ownedMap, deckSize, nonlandsByType]);
 
+  /* ═══════════════════════ RENDER ═══════════════════════ */
   return (
-    <div className="min-h-screen">
-      <div className="max-w-7xl mx-auto px-6 py-10">
-        {/* HEADER: mobile fixes via header-wrap/header-actions classes */}
-        <header className="header-wrap lg:flex lg:items-center lg:justify-between lg:gap-4">
-          <h1 className="text-2xl md:text-4xl font-semibold tracking-tight">MTG Commander Deck Generator — <span className="muted">v6.6</span></h1>
-          <div className="header-actions lg:flex lg:gap-2 lg:w-auto">
-            {/* THEME TOGGLE */}
-            <button className="btn" onClick={()=> setTheme(theme==='dark' ? 'light' : 'dark')} aria-label="Basculer thème">
-              {theme==='dark' ? (<><Sun className="h-4 w-4"/><span>Mode clair</span></>) : (<><Moon className="h-4 w-4"/><span>Mode sombre</span></>)}
-            </button>
-            <button className="btn" onClick={copyList}><Copy className="inline-block h-4 w-4"/>Copier</button>
-            <button className="btn" onClick={exportJson}><Download className="inline-block h-4 w-4"/>JSON</button>
-            <button className="btn-primary" onClick={exportTxt}><Download className="inline-block h-4 w-4"/>TXT</button>
+    <div className="min-h-screen font-sans">
+      {/* ─── HEADER ─── */}
+      <header className="sticky top-0 z-40 no-print" style={{background:'var(--bg)', borderBottom:'1px solid var(--border)'}}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="h-8 w-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{background:'var(--accent)', boxShadow:'0 2px 8px var(--accent-glow)'}}>
+              <Sparkles className="h-4 w-4 text-white"/>
+            </div>
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight truncate">Commander Craft</h1>
           </div>
-        </header>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button className="btn-ghost rounded-full p-2" onClick={()=> setTheme(theme==='dark' ? 'light' : 'dark')} aria-label={theme==='dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}>
+              {theme==='dark' ? <Sun className="h-4 w-4"/> : <Moon className="h-4 w-4"/>}
+            </button>
+            {deck && <>
+              <button className="btn-ghost rounded-full p-2" onClick={copyList} aria-label="Copier la liste"><Copy className="h-4 w-4"/></button>
+              <button className="btn text-xs hidden sm:inline-flex" onClick={exportJson}><Download className="h-3.5 w-3.5"/>JSON</button>
+              <button className="btn-primary text-xs hidden sm:inline-flex" onClick={exportTxt}><Download className="h-3.5 w-3.5"/>Export TXT</button>
+            </>}
+          </div>
+        </div>
+      </header>
 
-        <div className="grid lg:grid-cols-3 gap-8 mt-8">
-          {/* Paramètres */}
-          <div className="glass p-6 lg:col-span-1">
-            <div className="flex items-center gap-2 mb-4"><Settings2 className="h-5 w-5"/><h2 className="font-medium">Paramètres</h2></div>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="grid lg:grid-cols-[340px_1fr] gap-6 lg:gap-8 items-start">
 
-            {/* Commandant */}
-            <div className="space-y-2">
-              <span className="muted text-sm">Commandant</span>
-              <div className="flex gap-2 flex-wrap">
-                <button className={`btn ${commanderMode==='random'?'glass-strong':''}`} onClick={()=>{setCommanderMode('random'); setChosenCommander("");}}>Aléatoire</button>
-                <button className={`btn ${commanderMode==='select'?'glass-strong':''}`} onClick={()=>setCommanderMode('select')}>Sélectionner</button>
+          {/* ═══ SIDEBAR ═══ */}
+          <aside className="lg:sticky lg:top-24 space-y-5 no-print">
+            {/* Commander */}
+            <section className="panel p-5">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted mb-4">Commandant</h2>
+              <div className="flex gap-2 mb-4">
+                <button className={`btn flex-1 text-xs ${commanderMode==='random'?'btn-active':''}`} onClick={()=>{setCommanderMode('random'); setChosenCommander("");}}>
+                  <Shuffle className="h-3.5 w-3.5"/>Aléatoire
+                </button>
+                <button className={`btn flex-1 text-xs ${commanderMode==='select'?'btn-active':''}`} onClick={()=>setCommanderMode('select')}>
+                  <Wand2 className="h-3.5 w-3.5"/>Choisir
+                </button>
               </div>
               {commanderMode==='select' && (
-                <div className="mt-2">
+                <div className="animate-fade-in">
                   <CommanderAutocomplete value={chosenCommander} onSelect={setChosenCommander} />
                   {selectedCommanderCard && (
-                    <p className="text-xs muted mt-1">Sélectionné: <span className="text-card-foreground">{nameOf(selectedCommanderCard)}</span> • Identité: {getCI(selectedCommanderCard)}</p>
+                    <div className="mt-2 flex items-center gap-2 text-xs">
+                      <span className="owned-check">✓</span>
+                      <span className="text-secondary truncate">{nameOf(selectedCommanderCard)}</span>
+                      <span className="text-muted">({getCI(selectedCommanderCard) || "C"})</span>
+                    </div>
                   )}
                 </div>
               )}
-            </div>
-
-            {/* Identité couleur (masquée si select) */}
-            {commanderMode!=='select' && (
-              <div className="mt-4">
-                <span className="muted text-sm">Identité couleur (optionnel)</span>
-                <div className="flex gap-2 mt-2 flex-wrap">
-                  {COLORS.map(c=> (
-                    <button key={c} className={`btn ${desiredCI.includes(c)?'glass-strong':''}`} onClick={()=>{ const set=new Set(desiredCI.split("")); set.has(c)?set.delete(c):set.add(c); setDesiredCI(ciMask(Array.from(set).join(""))); }}>{c}</button>
-                  ))}
-                  <button className="btn" onClick={()=>setDesiredCI("")}>Réinitialiser</button>
-                </div>
-              </div>
-            )}
-
-            {/* Mécaniques (max 3) */}
-            <div className="mt-4">
-              <span className="muted text-sm">Mécaniques préférées (max 3)</span>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                {MECHANIC_TAGS.map(m=> (
-                  <button key={m.key} className={`btn ${mechanics.includes(m.key)?'glass-strong':''}`} onClick={()=>toggleMechanic(m.key)}>{m.label}</button>
-                ))}
-              </div>
-              {limitNotice && <p className="text-xs" style={{color:'var(--warn)'}}>{limitNotice}</p>}
-            </div>
-
-            {/* Poids */}
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="muted text-sm">Prioriser ma collection: {weightOwned.toFixed(1)}x</label>
-                <input type="range" min={0} max={2} step={0.1} value={weightOwned} onChange={e=>setWeightOwned(Number(e.target.value))} className="w-full"/>
-              </div>
-              <div>
-                <label className="muted text-sm">Prioriser EDHREC: {weightEdhrec.toFixed(1)}x</label>
-                <input type="range" min={0} max={2} step={0.1} value={weightEdhrec} onChange={e=>setWeightEdhrec(Number(e.target.value))} className="w-full"/>
-              </div>
-            </div>
-
-            {/* Terrains & Budget */}
-            <div className="mt-4">
-              <label className="muted text-sm">Nombre de terrains visé: {targetLands}</label>
-              <input type="range" min={32} max={40} step={1} value={targetLands} onChange={e=>setTargetLands(Number(e.target.value))} className="w-full"/>
-            </div>
-            <div className="mt-3">
-              <label className="muted text-sm">Budget global du deck (EUR)</label>
-              <input type="number" min={0} placeholder="0 = sans limite" value={deckBudget} onChange={e=>setDeckBudget(Number(e.target.value||0))} className="w-full input"/>
-              <p className="text-xs muted mt-1">Prix EUR Scryfall; popularité EDHREC via edhrec_rank.</p>
-            </div>
-
-            {/* Partner / Background */}
-            <div className="mt-4 flex items-center justify-between">
-              <div className="space-y-1"><span>Autoriser Partner</span><p className="text-xs muted">N'influence pas la recherche ; ajoute un partenaire si possible.</p></div>
-              <input type="checkbox" checked={allowPartner} onChange={e=>setAllowPartner(e.target.checked)} />
-            </div>
-            <div className="mt-2 flex items-center justify-between">
-              <div className="space-y-1"><span>Autoriser Background</span><p className="text-xs muted">Si le commandant le permet.</p></div>
-              <input type="checkbox" checked={allowBackground} onChange={e=>setAllowBackground(e.target.checked)} />
-            </div>
-
-            <button className="mt-5 w-full btn-primary justify-center" disabled={loading} onClick={generate}>
-              {loading? (<RefreshCcw className="h-4 w-4 animate-spin"/>):(<Shuffle className="h-4 w-4"/>)} {loading?"Génération...":"Générer un deck"}
-            </button>
-
-            {error && <p className="text-sm" style={{color:'#ffb4c2'}}>{error}</p>}
-
-            <div className="text-xs muted flex items-start gap-2 mt-3">
-              <Info className="h-4 w-4 mt-0.5"/>
-              <p>Règles EDH respectées (100 cartes, singleton sauf bases, identité couleur, légalités, Partner / Partner with / Friends forever / Doctor's companion). Budget heuristique glouton.</p>
-            </div>
-          </div>
-
-          {/* Right column */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* Collection */}
-            <div className="glass p-6">
-              <div className="flex items-center gap-2 mb-4"><Upload className="h-5 w-5"/><h2 className="font-medium">Collection personnelle (optionnel)</h2></div>
-              <p className="text-sm muted">Importe un ou plusieurs fichiers pour prioriser tes cartes lors de la génération.</p>
-              <div className="mt-3"><FileDrop onFiles={async (files)=>{ for(const f of files){ await handleCollectionFile(f); } }}/></div>
-              <div className="mt-3 text-sm">
-                {uploadedFiles.length>0 ? (
-                  <div className="space-y-2">
-                    <div className="muted text-xs">Fichiers importés ({uploadedFiles.length}) :</div>
-                    <ul className="grid md:grid-cols-2 gap-2">
-                      {uploadedFiles.map(f=> (
-                        <li key={f.id} className="flex items-center justify-between glass-strong rounded-lg px-3 py-1.5">
-                          <span className="truncate" title={f.name}>{f.name}</span>
-                          <button className="btn" onClick={()=>removeUploadedFile(f.id)} title="Supprimer ce fichier"><Trash2 className="h-4 w-4"/></button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (<div className="muted">Aucun fichier importé pour l’instant.</div>)}
-              </div>
-              <div className="flex items-center justify-between mt-3">
-                <p>Cartes reconnues: <span className="font-semibold">{ownedMap.size}</span></p>
-                <button className="btn" onClick={clearCollection}>Réinitialiser</button>
-              </div>
-            </div>
-
-            {/* Editable balance targets */}
-            <div className="glass p-6">
-              <h3 className="font-medium mb-3">Cibles d’équilibrage (éditables)</h3>
-              <div className="grid md:grid-cols-2 gap-4 text-sm">
-                {["ramp","draw","removal","wraths"].map(cat=> (
-                  <div key={cat} className="flex items-center gap-2">
-                    <span className="w-28 capitalize">{cat}</span>
-                    <label className="text-xs muted">Min</label>
-                    <input type="number" className="w-16 input px-2 py-1" value={targets[cat].min} min={0} max={99} onChange={e=>setTargets(prev=>({...prev, [cat]:{...prev[cat], min:Number(e.target.value)||0}}))}/>
-                    <label className="text-xs muted">Max</label>
-                    <input type="number" className="w-16 input px-2 py-1" value={targets[cat].max} min={0} max={99} onChange={e=>setTargets(prev=>({...prev, [cat]:{...prev[cat], max:Number(e.target.value)||0}}))}/>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs muted mt-2">L’algo vise le <b>min</b> comme plancher; le max est indicatif pour l’affichage.</p>
-            </div>
-
-            {/* Result */}
-            <div className="glass p-6">
-              <div className="flex items-center gap-2 mb-4"><Sparkles className="h-5 w-5"/><h2 className="font-medium">Résultat</h2></div>
-              {!deck ? (
-                <div className="text-sm muted">Configure les options puis clique « Générer un deck ».</div>
-              ) : (
-                <div className="space-y-6">
-                  {/* Commander(s) */}
-                  <div ref={commanderSectionRef} className="section-anchor">
-                    <h3 className="text-lg font-medium">Commandant{deck.commanders.length>1?'s':''} ({deck.commanders.length})</h3>
-                    <div className="mt-2 grid md:grid-cols-2 gap-3">
-                      {deck.commandersFull?.map((c,i)=> {
-                        const owned = isOwned(c.name);
-                        return (
-                          <div key={i} className="glass-strong rounded-lg p-3 flex gap-3">
-                            {c.small ? (
-                              <img src={c.small} alt={c.name} className="w-20 h-28 object-cover rounded cursor-pointer" onClick={()=>{setModalCard(c); setModalOwned(owned); setShowModal(true);}}/>
-                            ) : (<div className="w-20 h-28 glass-strong rounded"/>) }
-                            <div className="min-w-0">
-                              <button className="text-left font-medium hover:underline flex items-center gap-1" onClick={()=>{setModalCard(c); setModalOwned(owned); setShowModal(true);}}>
-                                <span className="truncate">{c.name}</span>
-                                {owned && (<span style={{color:'limegreen',fontWeight:'bold'}} title="Carte présente dans votre collection">✓</span>)}
-                              </button>
-                              {c.mana_cost && <div className="text-xs muted mt-0.5"><ManaCost cost={c.mana_cost}/></div>}
-                              {c.oracle_en && (
-                                <div className="text-xs mt-1" style={{display:'-webkit-box', WebkitLineClamp:3, WebkitBoxOrient:'vertical', overflow:'hidden'}}>
-                                  {c.oracle_en}
-                                </div>
-                              )}
-                              <div className="text-xs muted mt-1">Prix estimé: {(Number(c.prices?.eur)||Number(c.prices?.eur_foil)||0).toFixed(2)}€</div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <p className="muted text-xs mt-1">Identité: {deck.colorIdentity || "(Colorless)"} • Taille: {deckSize} cartes • Coût estimé: {deck.spent?.toFixed(2)}€{deck.budget?` / Budget: ${deck.budget}€`:''}</p>
-                  </div>
-
-                  {/* Balance indicators */}
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Progress label="Ramp" value={deck.balanceCounts?.ramp||0} targetMin={targets.ramp.min} targetMax={targets.ramp.max}/>
-                    <Progress label="Pioche" value={deck.balanceCounts?.draw||0} targetMin={targets.draw.min} targetMax={targets.draw.max}/>
-                    <Progress label="Anti-bêtes / Answers" value={deck.balanceCounts?.removal||0} targetMin={targets.removal.min} targetMax={targets.removal.max}/>
-                    <Progress label="Wraths" value={deck.balanceCounts?.wraths||0} targetMin={targets.wraths.min} targetMax={targets.wraths.max}/>
-                  </div>
-
-                  {/* Non-land spells grouped by primary type */}
-                  <div>
-                    <h3 className="text-lg font-medium">Sorts non-terrains ({Object.values(deck.nonlands).reduce((a,b)=>a+b,0)})</h3>
-                    {Object.keys(nonlandsByType).length===0 ? (
-                      <p className="text-sm muted mt-1">Aucun sort détecté.</p>
-                    ) : (
-                      <div className="space-y-4 mt-2">
-                        {Object.entries(nonlandsByType).map(([label, cards])=> (
-                          <div key={label}>
-                            <h4 className="text-sm muted mb-2">{label} ({cards.length})</h4>
-                            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                              {cards.map((c,idx)=> {
-                                const owned = isOwned(c.name);
-                                return (
-                                  <CardTile key={c.name+idx} card={c} owned={owned} onOpen={(cc, ow)=>{setModalCard(cc); setModalOwned(ow); setShowModal(true);}}/>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+              {commanderMode!=='select' && (
+                <div className="animate-fade-in">
+                  <label className="block text-xs font-medium text-muted mb-2">Identité couleur (optionnel)</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {COLORS.map(c=> (
+                      <button key={c} onClick={()=>{ const set=new Set(desiredCI.split("").filter(Boolean)); set.has(c)?set.delete(c):set.add(c); setDesiredCI(ciMask(Array.from(set).join(""))); }}
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-150"
+                        style={{
+                          background: desiredCI.includes(c) ? MANA_BG[c] : 'var(--surface-strong)',
+                          border: desiredCI.includes(c) ? `2px solid var(--accent)` : '2px solid var(--border)',
+                          color: desiredCI.includes(c) ? '#1a1a2e' : 'var(--text-muted)',
+                          boxShadow: desiredCI.includes(c) ? '0 0 0 2px var(--accent-glow)' : 'none',
+                        }}
+                        aria-label={`${COLOR_LABELS[c]} ${desiredCI.includes(c)?'(sélectionné)':''}`}
+                        title={COLOR_LABELS[c]}
+                      >{c}</button>
+                    ))}
+                    {desiredCI && (
+                      <button className="btn-ghost text-xs px-2 py-1 rounded-lg" onClick={()=>setDesiredCI("")}>Reset</button>
                     )}
-                  </div>
-
-                  {/* Lands as tiles (with modal) */}
-                  <div>
-                    <h3 className="text-lg font-medium">Terrains ({Object.values(deck.lands).reduce((a,b)=>a+b,0)})</h3>
-                    {Array.isArray(deck.landCards) && deck.landCards.length>0 ? (
-                      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
-                        {deck.landCards.map((lc,idx)=> {
-                          const owned = isOwned(lc.name);
-                          return (
-                            <CardTile key={lc.name+idx} card={lc} qty={lc.qty} owned={owned} onOpen={(cc, ow)=>{setModalCard(cc); setModalOwned(ow); setShowModal(true);}}/>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="grid md:grid-cols-2 gap-2 mt-2 text-sm">
-                        {Object.entries(deck.lands).map(([n,q]) => (
-                          <div key={n} className="flex justify-between glass-strong rounded-lg px-3 py-1.5"><span>{n}</span><span className="muted">x{q}</span></div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Statistics */}
-                  <div className="glass-strong rounded-xl p-4">
-                    <h3 className="font-medium mb-3">Statistiques</h3>
-                    {stats ? (
-                      <div className="grid md:grid-cols-3 gap-3 text-sm">
-                        <div className="glass rounded-lg p-3">
-                          <div className="muted text-xs">Cartes possédées utilisées</div>
-                          <div className="text-lg font-semibold">{stats.ownedCount} / {deckSize} <span className="text-xs muted">({stats.ownedPct}%)</span></div>
-                        </div>
-                        <div className="glass rounded-lg p-3">
-                          <div className="muted text-xs">Coût estimé du deck</div>
-                          <div className="text-lg font-semibold">{(deck.spent||0).toFixed(2)}€</div>
-                        </div>
-                        <div className="glass rounded-lg p-3">
-                          <div className="muted text-xs">CMC moyen (hors terrains)</div>
-                          <div className="text-lg font-semibold">{stats.avgCmc}</div>
-                        </div>
-                        <div className="md:col-span-3 grid md:grid-cols-4 gap-2">
-                          {Object.entries(stats.typeCounts).map(([k,v])=> (
-                            <div key={k} className="glass rounded-lg p-3 flex items-center justify-between"><span className="muted text-xs">{k}</span><span className="font-medium">{v}</span></div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="muted text-sm">Aucune statistique (génère un deck d'abord).</div>
-                    )}
-                  </div>
-
-                  {/* Bottom actions: stack on mobile for consistency */}
-                  <div className="grid grid-cols-1 lg:flex lg:flex-wrap lg:gap-2 gap-2">
-                    <button className="btn" onClick={copyList}><Copy className="inline-block h-4 w-4"/>Copier</button>
-                    <button className="btn" onClick={exportJson}><Download className="inline-block h-4 w-4"/>JSON</button>
-                    <button className="btn-primary" onClick={exportTxt}><Download className="inline-block h-4 w-4"/>TXT</button>
-                    <button className="btn" onClick={reequilibrer} disabled={loading}><Sparkles className="inline-block h-4 w-4"/>Rééquilibrer</button>
                   </div>
                 </div>
               )}
+            </section>
+
+            {/* Mechanics */}
+            <section className="panel p-5">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted mb-3">Mécaniques <span className="text-xs font-normal">(max 3)</span></h2>
+              <div className="flex flex-wrap gap-1.5">
+                {MECHANIC_TAGS.map(m=> (
+                  <button key={m.key} className={`chip ${mechanics.includes(m.key)?'chip-active':''}`} onClick={()=>toggleMechanic(m.key)}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              {limitNotice && <p className="text-xs mt-2" style={{color:'var(--warning)'}}>{limitNotice}</p>}
+            </section>
+
+            {/* Fine-tuning */}
+            <section className="panel p-5 space-y-5">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted mb-1">Réglages</h2>
+
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span>Poids collection</span>
+                  <span className="font-semibold" style={{color:'var(--accent)'}}>{weightOwned.toFixed(1)}x</span>
+                </div>
+                <input type="range" min={0} max={2} step={0.1} value={weightOwned} onChange={e=>setWeightOwned(Number(e.target.value))} aria-label="Poids collection"/>
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span>Poids EDHREC</span>
+                  <span className="font-semibold" style={{color:'var(--accent)'}}>{weightEdhrec.toFixed(1)}x</span>
+                </div>
+                <input type="range" min={0} max={2} step={0.1} value={weightEdhrec} onChange={e=>setWeightEdhrec(Number(e.target.value))} aria-label="Poids EDHREC"/>
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span>Terrains visés</span>
+                  <span className="font-semibold" style={{color:'var(--accent)'}}>{targetLands}</span>
+                </div>
+                <input type="range" min={32} max={40} step={1} value={targetLands} onChange={e=>setTargetLands(Number(e.target.value))} aria-label="Nombre de terrains"/>
+              </div>
+              <div>
+                <label className="block text-sm mb-2">Budget max (EUR)</label>
+                <input type="number" min={0} placeholder="0 = illimité" value={deckBudget||''} onChange={e=>setDeckBudget(Number(e.target.value||0))} className="input text-sm" aria-label="Budget en euros"/>
+              </div>
+
+              <div className="pt-2 space-y-3 border-t" style={{borderColor:'var(--border)'}}>
+                <Toggle checked={allowPartner} onChange={setAllowPartner} label="Autoriser Partner" description="Ajoute un partenaire si le commandant le permet"/>
+                <Toggle checked={allowBackground} onChange={setAllowBackground} label="Autoriser Background" description="Si le commandant a « Choose a Background »"/>
+              </div>
+            </section>
+
+            {/* Generate */}
+            <button className="btn-primary w-full py-3 text-base" disabled={loading} onClick={generate} aria-label="Générer un deck">
+              {loading ? (
+                <><RefreshCcw className="h-5 w-5 animate-spin"/>Génération en cours…</>
+              ) : (
+                <><Shuffle className="h-5 w-5"/>Générer un deck</>
+              )}
+            </button>
+
+            {error && (
+              <div className="rounded-xl p-3 text-sm animate-fade-in" style={{background:'rgba(248,113,113,0.1)', border:'1px solid rgba(248,113,113,0.3)', color:'var(--danger)'}}>
+                {error}
+              </div>
+            )}
+
+            <div className="flex items-start gap-2 text-xs text-muted px-1">
+              <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0"/>
+              <p>Règles EDH : 100 cartes, singleton, identité couleur, Partner / Partner with / Friends forever / Doctor's companion.</p>
             </div>
+          </aside>
+
+          {/* ═══ MAIN CONTENT ═══ */}
+          <div className="space-y-6">
+
+            {/* Collection */}
+            <section className="panel p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-muted"/>
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">Collection</h2>
+                </div>
+                {uploadedFiles.length > 0 && (
+                  <button className="btn-ghost text-xs" onClick={clearCollection}><Trash2 className="h-3.5 w-3.5"/>Vider</button>
+                )}
+              </div>
+              <FileDrop onFiles={async (files)=>{ for(const f of files){ await handleCollectionFile(f); } }}/>
+              {uploadedFiles.length > 0 && (
+                <div className="mt-4 space-y-2 animate-fade-in">
+                  {uploadedFiles.map(f=> (
+                    <div key={f.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl" style={{background:'var(--surface-strong)', border:'1px solid var(--border)'}}>
+                      <span className="text-sm truncate">{f.name}</span>
+                      <button className="btn-ghost p-1 rounded-lg" onClick={()=>removeUploadedFile(f.id)} aria-label={`Supprimer ${f.name}`}><Trash2 className="h-3.5 w-3.5"/></button>
+                    </div>
+                  ))}
+                  <div className="text-xs text-muted px-1">{ownedMap.size} cartes reconnues</div>
+                </div>
+              )}
+            </section>
+
+            {/* Balance targets */}
+            <section className="panel p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <BarChart3 className="h-4 w-4 text-muted"/>
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">Cibles d'équilibrage</h2>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
+                {["ramp","draw","removal","wraths"].map(cat=> (
+                  <div key={cat} className="flex items-center gap-2 text-sm">
+                    <span className="w-20 capitalize font-medium">{cat}</span>
+                    <label className="text-xs text-muted">Min</label>
+                    <input type="number" className="w-14 input px-2 py-1.5 text-xs text-center" value={targets[cat].min} min={0} max={99} onChange={e=>setTargets(prev=>({...prev, [cat]:{...prev[cat], min:Number(e.target.value)||0}}))}/>
+                    <label className="text-xs text-muted">Max</label>
+                    <input type="number" className="w-14 input px-2 py-1.5 text-xs text-center" value={targets[cat].max} min={0} max={99} onChange={e=>setTargets(prev=>({...prev, [cat]:{...prev[cat], max:Number(e.target.value)||0}}))}/>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* ═══ RESULTS ═══ */}
+            {!deck && !loading && (
+              <div className="panel p-12 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center" style={{background:'var(--accent-subtle)'}}>
+                  <Sparkles className="h-7 w-7" style={{color:'var(--accent)'}}/>
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Prêt à générer</h3>
+                <p className="text-sm text-secondary max-w-sm mx-auto">Configure tes options dans le panneau de gauche, puis clique « Générer un deck ».</p>
+              </div>
+            )}
+
+            {loading && (
+              <div className="panel p-12 text-center animate-fade-in">
+                <RefreshCcw className="h-8 w-8 mx-auto mb-4 animate-spin" style={{color:'var(--accent)'}}/>
+                <p className="text-sm text-secondary">Génération en cours… Scryfall peut prendre quelques secondes.</p>
+              </div>
+            )}
+
+            {deck && (
+              <div className="space-y-6 animate-slide-up">
+                {/* Commander(s) */}
+                <section ref={commanderSectionRef} className="panel p-5" style={{scrollMarginTop:'80px'}}>
+                  <h2 className="section-title mb-4">Commandant{deck.commanders.length>1?'s':''}</h2>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    {deck.commandersFull?.map((c,i)=> {
+                      const owned = isOwned(c.name);
+                      return (
+                        <div key={i} className="rounded-xl overflow-hidden" style={{background:'var(--surface-strong)', border:'1px solid var(--border)'}}>
+                          <div className="flex gap-4 p-4">
+                            {c.small ? (
+                              <img src={c.small} alt={c.name} className="w-20 h-28 object-cover rounded-xl shadow-md cursor-pointer hover:scale-105 transition-transform" onClick={()=>{setModalCard(c); setModalOwned(owned); setShowModal(true);}} loading="lazy"/>
+                            ) : (<div className="w-20 h-28 rounded-xl" style={{background:'var(--surface)'}}/>) }
+                            <div className="min-w-0 flex-1">
+                              <button className="text-left font-semibold hover:underline flex items-center gap-1.5 text-base" onClick={()=>{setModalCard(c); setModalOwned(owned); setShowModal(true);}}>
+                                <span className="truncate">{c.name}</span>
+                                {owned && <span className="owned-check text-sm">✓</span>}
+                              </button>
+                              {c.mana_cost && <div className="mt-1.5"><ManaCost cost={c.mana_cost}/></div>}
+                              {c.oracle_en && (
+                                <div className="text-xs mt-2 text-secondary leading-relaxed" style={{display:'-webkit-box', WebkitLineClamp:3, WebkitBoxOrient:'vertical', overflow:'hidden'}}>
+                                  {c.oracle_en}
+                                </div>
+                              )}
+                              <div className="text-xs text-muted mt-2">{(Number(c.prices?.eur)||Number(c.prices?.eur_foil)||0).toFixed(2)}€</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+                    <span>Identité: <span className="font-semibold" style={{color:'var(--text)'}}>{deck.colorIdentity || "Incolore"}</span></span>
+                    <span>Taille: <span className="font-semibold" style={{color:'var(--text)'}}>{deckSize}</span> cartes</span>
+                    <span>Coût: <span className="font-semibold" style={{color:'var(--text)'}}>{deck.spent?.toFixed(2)}€</span>{deck.budget ? ` / ${deck.budget}€` : ''}</span>
+                  </div>
+                </section>
+
+                {/* Balance */}
+                <section className="panel p-5">
+                  <h2 className="section-title mb-4">Équilibre du deck</h2>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <Progress label="Ramp" value={deck.balanceCounts?.ramp||0} targetMin={targets.ramp.min} targetMax={targets.ramp.max}/>
+                    <Progress label="Pioche" value={deck.balanceCounts?.draw||0} targetMin={targets.draw.min} targetMax={targets.draw.max}/>
+                    <Progress label="Removal" value={deck.balanceCounts?.removal||0} targetMin={targets.removal.min} targetMax={targets.removal.max}/>
+                    <Progress label="Wraths" value={deck.balanceCounts?.wraths||0} targetMin={targets.wraths.min} targetMax={targets.wraths.max}/>
+                  </div>
+                </section>
+
+                {/* Spells by type */}
+                <section className="panel p-5">
+                  <h2 className="section-title mb-4">Sorts <span className="text-sm font-normal text-muted">({Object.values(deck.nonlands).reduce((a,b)=>a+b,0)})</span></h2>
+                  {Object.keys(nonlandsByType).length===0 ? (
+                    <p className="text-sm text-muted">Aucun sort détecté.</p>
+                  ) : (
+                    <div className="space-y-6">
+                      {Object.entries(nonlandsByType).map(([label, cards])=> (
+                        <div key={label}>
+                          <h3 className="section-subtitle mb-3">{label} <span className="text-muted font-normal">({cards.length})</span></h3>
+                          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                            {cards.map((c,idx)=> (
+                              <CardTile key={c.name+idx} card={c} owned={isOwned(c.name)} onOpen={(cc, ow)=>{setModalCard(cc); setModalOwned(ow); setShowModal(true);}}/>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Lands */}
+                <section className="panel p-5">
+                  <h2 className="section-title mb-4">Terrains <span className="text-sm font-normal text-muted">({Object.values(deck.lands).reduce((a,b)=>a+b,0)})</span></h2>
+                  {Array.isArray(deck.landCards) && deck.landCards.length>0 ? (
+                    <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                      {deck.landCards.map((lc,idx)=> (
+                        <CardTile key={lc.name+idx} card={lc} qty={lc.qty} owned={isOwned(lc.name)} onOpen={(cc, ow)=>{setModalCard(cc); setModalOwned(ow); setShowModal(true);}}/>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      {Object.entries(deck.lands).map(([n,q]) => (
+                        <div key={n} className="flex justify-between items-center px-3 py-2 rounded-xl text-sm" style={{background:'var(--surface)', border:'1px solid var(--border)'}}>
+                          <span>{n}</span><span className="text-muted font-medium">x{q}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Stats */}
+                {stats && (
+                  <section className="panel p-5">
+                    <h2 className="section-title mb-4">Statistiques</h2>
+                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div className="stat-card">
+                        <div className="text-xs text-muted mb-1">Cartes possédées</div>
+                        <div className="text-2xl font-bold">{stats.ownedCount}<span className="text-sm font-normal text-muted ml-1">/ {deckSize}</span></div>
+                        <div className="text-xs text-muted">{stats.ownedPct}%</div>
+                      </div>
+                      <div className="stat-card">
+                        <div className="text-xs text-muted mb-1">Coût estimé</div>
+                        <div className="text-2xl font-bold">{(deck.spent||0).toFixed(2)}<span className="text-sm font-normal text-muted ml-1">€</span></div>
+                      </div>
+                      <div className="stat-card">
+                        <div className="text-xs text-muted mb-1">CMC moyen</div>
+                        <div className="text-2xl font-bold">{stats.avgCmc}</div>
+                      </div>
+                      {Object.entries(stats.typeCounts).map(([k,v])=> (
+                        <div key={k} className="stat-card flex items-center justify-between">
+                          <span className="text-xs text-muted">{k}</span>
+                          <span className="text-lg font-bold">{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* Actions */}
+                <div className="flex flex-wrap gap-2">
+                  <button className="btn" onClick={copyList}><Copy className="h-4 w-4"/>Copier</button>
+                  <button className="btn" onClick={exportJson}><Download className="h-4 w-4"/>JSON</button>
+                  <button className="btn-primary" onClick={exportTxt}><Download className="h-4 w-4"/>Export TXT</button>
+                  <button className="btn" onClick={reequilibrer} disabled={loading}><Sparkles className="h-4 w-4"/>Rééquilibrer</button>
+                  <button className="btn-primary" onClick={generate} disabled={loading}><Shuffle className="h-4 w-4"/>Regénérer</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
+      </main>
 
-        <CardModal open={showModal} card={modalCard} owned={modalOwned} onClose={()=>setShowModal(false)}/>
+      <CardModal open={showModal} card={modalCard} owned={modalOwned} onClose={()=>setShowModal(false)}/>
 
-        <footer className="mt-10 text-xs muted">Fait avec ❤️ — Scryfall API (popularité EDHREC via <code>edhrec_rank</code>). Non affilié à WotC.</footer>
-      </div>
+      <footer className="max-w-7xl mx-auto px-4 sm:px-6 py-6 text-xs text-muted no-print">
+        Commander Craft — Scryfall API (popularité EDHREC via edhrec_rank). Non affilié à Wizards of the Coast.
+      </footer>
     </div>
   );
 }
@@ -818,7 +852,7 @@ async function parseCollectionFile(file){
 
 /************** Minimal tests (dev console) **************/
 (function runUnitTests(){
-  if (typeof window === 'undefined') return; if (window.__MTG_V66_TESTED__) return; window.__MTG_V66_TESTED__=true;
+  if (typeof window === 'undefined') return; if (window.__MTG_V7_TESTED__) return; window.__MTG_V7_TESTED__=true;
   const cases = [
     { in:"{3}{G}{G}", out:["3","G","G"] },
     { in:"{X}{U/R}{2}", out:["X","U/R","2"] },
