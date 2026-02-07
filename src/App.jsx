@@ -90,7 +90,7 @@ const RE = {
 
 const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 const ciMask = (s)=> s.split("").filter(Boolean).sort().join("");
-const identityToQuery = (ci)=> `ci<=${(ci||"").toLowerCase()}`;
+const identityToQuery = (ci)=> `ci<=${(ci||"c").toLowerCase()}`;
 const nameOf = (c)=> c?.name?.trim?.()||"";
 const oracle = (c)=> (c?.oracle_text||"").toLowerCase();
 const isCommanderLegal = (c)=> c?.legalities?.commander === "legal";
@@ -364,12 +364,55 @@ export default function App(){
   const mechanicScore=(card)=> mechanics.length? MECHANIC_TAGS.reduce((s,m)=> s + (mechanics.includes(m.key) && m.matchers.some(k=>oracle(card).includes(k.toLowerCase()))?1:0), 0) : 0;
   const sortByPreference=(pool)=>{ const rb=new Map(pool.map(c=>[nameOf(c), Math.random()])); return [...pool].sort((a,b)=>{ const owA=ownedMap.has(nameOf(a).toLowerCase())?1:0, owB=ownedMap.has(nameOf(b).toLowerCase())?1:0; const sa=weightOwned*owA + weightEdhrec*edhrecScore(a) + 0.25*mechanicScore(a); const sb=weightOwned*owB + weightEdhrec*edhrecScore(b) + 0.25*mechanicScore(b); if(sa!==sb) return sb-sa; const pA=priceEUR(a), pB=priceEUR(b); return pA!==pB? pA-pB : rb.get(nameOf(a))-rb.get(nameOf(b)); }); };
   const greedyPickUnique=(sortedPool, need, banned, currentCost, budget)=>{ const picks=[]; const taken=new Set(banned); let cost=currentCost; for(const c of sortedPool){ if(picks.length>=need) break; const n=nameOf(c); if(taken.has(n)) continue; const p=priceEUR(c); if(budget>0 && (cost+p)>budget) continue; picks.push(c); taken.add(n); cost+=p; } return {picks,cost}; };
-  const buildManaBase=(ci, basicTarget)=>{ const colors=(ci||"").split(""); const basicsByColor={W:"Plains",U:"Island",B:"Swamp",R:"Mountain",G:"Forest"}; if(colors.length===0) return { Wastes: basicTarget }; const per=Math.floor(basicTarget/colors.length); let rem=basicTarget - per*colors.length; const lands={}; for(const c of colors){ const n=basicsByColor[c]; lands[n]=per+(rem>0?1:0); rem--; } return lands; };
+  const buildManaBase=(ci, basicTarget)=>{ const colors=(ci||"").split("").filter(Boolean); const basicsByColor={W:"Plains",U:"Island",B:"Swamp",R:"Mountain",G:"Forest"}; if(colors.length===0) return basicTarget>0?{ Wastes: basicTarget }:{}; const per=Math.floor(basicTarget/colors.length); let rem=basicTarget - per*colors.length; const lands={}; for(const c of colors){ const n=basicsByColor[c]; lands[n]=per+(rem>0?1:0); rem--; } return lands; };
   const countCats=(cards)=> cards.reduce((a,c)=>({ ramp:a.ramp+(RE.RAMP.test(oracle(c))||((c.type_line||'').toLowerCase().includes('artifact')&&oracle(c).includes('add one mana'))?1:0), draw:a.draw+(RE.DRAW.test(oracle(c))?1:0), removal:a.removal+(RE.REMOVAL.test(oracle(c))?1:0), wraths:a.wraths+(RE.WRATHS.test(oracle(c))?1:0)}),{ramp:0,draw:0,removal:0,wraths:0});
   const balanceSpells=(picks, pool, budget, spent)=>{ const TARGETS={ ramp:targets.ramp.min, draw:targets.draw.min, removal:targets.removal.min, wraths:targets.wraths.min }; const byName=new Set(picks.map(nameOf)); const counts=countCats(picks); const sorted=sortByPreference(pool); const fits=(cat,c)=> (cat==='ramp'&&RE.RAMP.test(oracle(c)))||(cat==='draw'&&RE.DRAW.test(oracle(c)))||(cat==='removal'&&RE.REMOVAL.test(oracle(c)))||(cat==='wraths'&&RE.WRATHS.test(oracle(c))); const res=[...picks]; for(const cat of Object.keys(TARGETS)){ if(counts[cat]>=TARGETS[cat]) continue; for(const c of sorted){ const n=nameOf(c); if(byName.has(n)) continue; const p=priceEUR(c); if(budget>0 && (spent+p)>budget) continue; if(!fits(cat,c)) continue; const idx=res.findIndex(x=>!fits(cat,x)); if(idx>=0){ byName.delete(nameOf(res[idx])); res[idx]=c; byName.add(n); counts[cat]++; spent+=p; } if(counts[cat]>=TARGETS[cat]) break; } } return {picks:res,spent,targets:TARGETS,counts}; };
-  const pickCommander=async(ci)=>{ if (commanderMode==='select' && selectedCommanderCard) return selectedCommanderCard; const q=["legal:commander","is:commander","game:paper","-is:funny", ci?identityToQuery(ci):"", "(type:\"legendary creature\" or (type:planeswalker and o:\"can be your commander\") or type:background)"].filter(Boolean).join(" "); for(let i=0;i<6;i++){ const c=await sf.random(q); if(!isCommanderLegal(c)) continue; if(oracle(c).includes("companion")) continue; return c; } throw new Error("Impossible de trouver un commandant aléatoire conforme."); };
-  const maybeAddPartner=async(primary)=>{ const has=(oracle(primary).includes("partner")||(primary.keywords||[]).some(k=>k.toLowerCase().includes("partner"))); if(!allowPartner||!has) return null; const q=["legal:commander","is:commander","game:paper","-is:funny","(keyword:partner or o:\"Partner with\")"].join(" "); for(let i=0;i<12;i++){ const c=await sf.random(q); if(!isCommanderLegal(c)) continue; if(nameOf(c)===nameOf(primary)) continue; return c; } return null; };
-  const maybeAddBackground=async(primary)=>{ const wants=allowBackground && oracle(primary).includes("choose a background"); if(!wants) return null; const q=["legal:commander","type:background","game:paper", identityToQuery(getCI(primary)||"wubrg")].join(" "); for(let i=0;i<10;i++){ const c=await sf.random(q); if(!isCommanderLegal(c)) continue; return c; } return null; };
+  const getPartnerInfo=(c)=>{
+    const kw=(c.keywords||[]).map(k=>k.toLowerCase());
+    const pwKw=(c.keywords||[]).find(k=>k.toLowerCase().startsWith("partner with "));
+    if(pwKw) return {type:"partner_with", name:pwKw.substring("partner with ".length).trim()};
+    if(kw.includes("partner")) return {type:"partner"};
+    if(kw.includes("friends forever")) return {type:"friends_forever"};
+    if(kw.includes("doctor's companion")) return {type:"doctors_companion"};
+    if(kw.includes("choose a background")) return {type:"background"};
+    const tl=(c.type_line||"").toLowerCase();
+    if(tl.includes("time lord") && tl.includes("doctor")) return {type:"time_lord_doctor"};
+    return null;
+  };
+  const pickCommander=async(ci)=>{ if (commanderMode==='select' && selectedCommanderCard) return selectedCommanderCard; const q=["legal:commander","is:commander","game:paper","-is:funny","-keyword:companion", ci?identityToQuery(ci):"", "(type:\"legendary creature\" or (type:planeswalker and o:\"can be your commander\") or type:background)"].filter(Boolean).join(" "); for(let i=0;i<6;i++){ const c=await sf.random(q); if(!isCommanderLegal(c)) continue; return c; } throw new Error("Impossible de trouver un commandant aléatoire conforme."); };
+  const maybeAddPartner=async(primary)=>{
+    if(!allowPartner) return null;
+    const info=getPartnerInfo(primary);
+    if(!info || info.type==="background") return null;
+    switch(info.type){
+      case "partner_with": {
+        try{ const c=await sf.namedExact(info.name); if(isCommanderLegal(c)) return c; }catch{}
+        return null;
+      }
+      case "partner": {
+        const q='legal:commander is:commander game:paper -is:funny keyword:partner';
+        for(let i=0;i<12;i++){ const c=await sf.random(q); if(!isCommanderLegal(c)) continue; if(nameOf(c)===nameOf(primary)) continue; const pi=getPartnerInfo(c); if(pi?.type!=="partner") continue; return c; }
+        return null;
+      }
+      case "friends_forever": {
+        const q='legal:commander is:commander game:paper -is:funny keyword:"friends forever"';
+        for(let i=0;i<12;i++){ const c=await sf.random(q); if(!isCommanderLegal(c)) continue; if(nameOf(c)===nameOf(primary)) continue; return c; }
+        return null;
+      }
+      case "doctors_companion": {
+        const q='legal:commander is:commander game:paper -is:funny type:"Time Lord Doctor"';
+        for(let i=0;i<12;i++){ const c=await sf.random(q); if(!isCommanderLegal(c)) continue; if(nameOf(c)===nameOf(primary)) continue; return c; }
+        return null;
+      }
+      case "time_lord_doctor": {
+        const q='legal:commander is:commander game:paper -is:funny keyword:"Doctor\'s companion"';
+        for(let i=0;i<12;i++){ const c=await sf.random(q); if(!isCommanderLegal(c)) continue; if(nameOf(c)===nameOf(primary)) continue; return c; }
+        return null;
+      }
+      default: return null;
+    }
+  };
+  const maybeAddBackground=async(primary)=>{ const info=getPartnerInfo(primary); if(!allowBackground || !info || info.type!=="background") return null; const q=["legal:commander","type:background","game:paper",identityToQuery(getCI(primary)||"wubrg")].join(" "); for(let i=0;i<10;i++){ const c=await sf.random(q); if(!isCommanderLegal(c)) continue; return c; } return null; };
   const fetchPool=async(ci)=>{ const base=`legal:commander game:paper ${identityToQuery(ci)} -is:funny`; const mech = mechanics.length ? ` (${mechanics.map(k=>{ const tag=MECHANIC_TAGS.find(m=>m.key===k); if(!tag) return ""; const parts=tag.matchers.map(m=>`o:\"${m}\"`).join(" or "); return `(${parts})`; }).join(" or ")})` : ""; const spellsQ=`${base} -type:land -type:background${mech}`; const landsQ =`${base} type:land -type:basic`; const gather=async(q,b,pages=2)=>{ let page=await sf.search(q,{unique:"cards", order:"random"}); b.push(...page.data); for(let i=1;i<pages && page.has_more;i++){ await sleep(100); page=await fetch(page.next_page).then(r=>r.json()); b.push(...page.data);} }; const spells=[], lands=[]; await gather(spellsQ,spells,2); await gather(landsQ,lands,1); return { spells:distinctByName(spells).filter(isCommanderLegal), lands:distinctByName(lands).filter(isCommanderLegal) }; };
   async function buildLandCards(landsMap){ const out=[]; for(const [n,q] of Object.entries(landsMap)){ try{ const b=await bundleByName(n); out.push({...b, qty:q}); } catch { out.push({ name:n, qty:q, image:"", small:"", oracle_en:"", mana_cost:"", cmc:0, prices:{}, scryfall_uri:"" }); } await sleep(60);} return out; }
   const generate=async()=>{ setError(""); setLoading(true); setDeck(null); try{
@@ -381,7 +424,7 @@ export default function App(){
       const spellsPref=sortByPreference(pool.spells); const landsPref=sortByPreference(pool.lands);
       const banned=new Set(cmdrs.map(nameOf)); let { picks:pickedSpells, cost:costAfterSpells } = greedyPickUnique(spellsPref, spellsTarget, banned, spent, totalBudget); spent=costAfterSpells;
       const balanced=balanceSpells(pickedSpells, pool.spells, totalBudget, spent); pickedSpells=balanced.picks; spent=balanced.spent;
-      const basicsNeeded=Math.max(landsTarget - Math.min(8, landsPref.length), 0); const landsMap=buildManaBase(ci, basicsNeeded); const chosenNonbasics=[]; for(const nb of landsPref){ if(chosenNonbasics.length>=8) break; const p=priceEUR(nb); if(totalBudget>0 && (spent+p)>totalBudget) continue; chosenNonbasics.push(nb); spent+=p; } for(const nb of chosenNonbasics){ landsMap[nameOf(nb)] = (landsMap[nameOf(nb)]||0)+1; }
+      const maxNonbasics=Math.min(Math.floor(landsTarget*0.5), landsPref.length); const chosenNonbasics=[]; for(const nb of landsPref){ if(chosenNonbasics.length>=maxNonbasics) break; const p=priceEUR(nb); if(totalBudget>0 && (spent+p)>totalBudget) continue; chosenNonbasics.push(nb); spent+=p; } const basicsNeeded=Math.max(landsTarget - chosenNonbasics.length, 0); const landsMap=buildManaBase(ci, basicsNeeded); for(const nb of chosenNonbasics){ landsMap[nameOf(nb)] = (landsMap[nameOf(nb)]||0)+1; }
       const currentCount=cmdrs.length + pickedSpells.length + Object.values(landsMap).reduce((a,b)=>a+b,0); let missing=100-currentCount; const basicsByColor={W:"Plains",U:"Island",B:"Swamp",R:"Mountain",G:"Forest"}; const firstBasic=(ci.split("")[0] && basicsByColor[ci.split("")[0]]) || "Wastes"; while(missing>0){ landsMap[firstBasic]=(landsMap[firstBasic]||0)+1; missing--; }
       const commandersFull = cmdrs.map(bundleCard);
       const nonlandCards = pickedSpells.map(bundleCard);
@@ -551,7 +594,7 @@ export default function App(){
 
             <div className="text-xs muted flex items-start gap-2 mt-3">
               <Info className="h-4 w-4 mt-0.5"/>
-              <p>Règles EDH respectées (100 cartes, singleton sauf bases, identité couleur, légalités). Budget heuristique glouton.</p>
+              <p>Règles EDH respectées (100 cartes, singleton sauf bases, identité couleur, légalités, Partner / Partner with / Friends forever / Doctor's companion). Budget heuristique glouton.</p>
             </div>
           </div>
 
