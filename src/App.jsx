@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCcw, Shuffle, Copy, Download, Upload, Info, Sparkles, Trash2, Sun, Moon, X, ChevronDown, ExternalLink, Layers, BarChart3, Wand2, RotateCcw } from "lucide-react";
+import { RefreshCcw, Shuffle, Copy, Download, Upload, Info, Sparkles, Trash2, Sun, Moon, X, ChevronDown, ExternalLink, Layers, BarChart3, Wand2, RotateCcw, Save, History, Link2 } from "lucide-react";
 
 /**
  * MTG Commander Deck Generator — v7.0
@@ -39,6 +39,24 @@ const RE = {
   WRATHS: /(destroy all creatures|exile all creatures|all creatures get)/i,
 };
 
+const STAPLE_ROCKS = [
+  {name:"Sol Ring", ci:""},
+  {name:"Arcane Signet", ci:""},
+  {name:"Commander's Sphere", ci:""},
+  {name:"Fellwar Stone", ci:""},
+  {name:"Mind Stone", ci:""},
+  {name:"Thought Vessel", ci:""},
+  {name:"Talisman of Creativity", ci:"RU"},
+  {name:"Talisman of Dominance", ci:"BU"},
+  {name:"Talisman of Conviction", ci:"RW"},
+  {name:"Talisman of Hierarchy", ci:"BW"},
+  {name:"Talisman of Impulse", ci:"GR"},
+  {name:"Talisman of Indulgence", ci:"BR"},
+  {name:"Talisman of Progress", ci:"UW"},
+  {name:"Talisman of Resilience", ci:"BG"},
+  {name:"Talisman of Unity", ci:"GW"},
+  {name:"Talisman of Curiosity", ci:"GU"},
+];
 const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 const ciMask = (s)=> s.split("").filter(Boolean).sort().join("");
 const identityToQuery = (ci)=> `ci<=${(ci||"c").toLowerCase()}`;
@@ -219,9 +237,32 @@ function Progress({label, value, targetMin, targetMax}){
   );
 }
 
-function CardTile({card, onOpen, qty, owned}){
+function ManaCurve({cards}){
+  const buckets = [0,0,0,0,0,0,0,0]; // 0,1,2,3,4,5,6,7+
+  for(const c of cards){ const cmc=Math.min(7, Math.floor(Number(c.cmc)||0)); buckets[cmc]++; }
+  const max = Math.max(1, ...buckets);
+  const labels = ['0','1','2','3','4','5','6','7+'];
   return (
-    <button className="card-tile" onClick={()=>onOpen(card, owned)} aria-label={`Voir ${card.name}`}>
+    <div>
+      <div className="text-xs font-medium text-muted mb-2">Courbe de mana</div>
+      <div className="flex items-end gap-1" style={{height:80}}>
+        {buckets.map((count,i)=> (
+          <div key={i} className="flex-1 flex flex-col items-center gap-1">
+            <span className="text-[10px] font-semibold" style={{color:'var(--text)'}}>{count||''}</span>
+            <div className="w-full rounded-t-sm transition-all duration-300" style={{height:`${Math.max(2, (count/max)*60)}px`, background:'var(--accent)', opacity: count?1:0.2}}/>
+            <span className="text-[10px] text-muted">{labels[i]}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CardTile({card, onOpen, qty, owned, onHover, onHoverEnd}){
+  const handleMouseMove=(e)=>{ if(onHover && card.image){ onHover(card, {x:e.clientX, y:e.clientY}); } };
+  const handleMouseLeave=()=>{ if(onHoverEnd) onHoverEnd(); };
+  return (
+    <button className="card-tile" onClick={()=>onOpen(card, owned)} onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} aria-label={`Voir ${card.name}`}>
       {qty ? <span className="badge">x{qty}</span> : null}
       {card.small ? (
         <img src={card.small} alt={card.name} className="w-12 h-16 object-cover rounded-lg shadow-sm" loading="lazy"/>
@@ -236,6 +277,17 @@ function CardTile({card, onOpen, qty, owned}){
         {card.mana_cost && <div className="mt-1"><ManaCost cost={card.mana_cost}/></div>}
       </div>
     </button>
+  );
+}
+
+function HoverPreview({card, pos}){
+  if(!card || !card.image) return null;
+  const top = Math.min(pos.y - 150, window.innerHeight - 360);
+  const left = pos.x + 20;
+  return (
+    <div className="fixed z-50 pointer-events-none animate-fade-in" style={{top: Math.max(8, top), left: Math.min(left, window.innerWidth - 270)}}>
+      <img src={card.image} alt={card.name} className="w-[250px] rounded-xl shadow-2xl" style={{border:'2px solid var(--border-strong)'}}/>
+    </div>
   );
 }
 
@@ -325,6 +377,7 @@ export default function App(){
 
   // UI state
   const [loading,setLoading]=useState(false);
+  const [genPhase,setGenPhase]=useState("");
   const [error,setError]=useState("");
   const [deck,setDeck]=useState(null);
   const [commanderMode,setCommanderMode]=useState("random");
@@ -334,6 +387,7 @@ export default function App(){
   const [desiredCI,setDesiredCI]=useState("");
   const [targetLands,setTargetLands]=useState(37);
   const [deckBudget,setDeckBudget]=useState(0);
+  const [maxCardPrice,setMaxCardPrice]=useState(0);
   const [mechanics,setMechanics]=useState([]);
   const [limitNotice,setLimitNotice]=useState("");
   const [weightOwned,setWeightOwned]=useState(1.0);
@@ -344,15 +398,46 @@ export default function App(){
   const [showModal, setShowModal] = useState(false);
   const [modalCard, setModalCard] = useState(null);
   const [modalOwned, setModalOwned] = useState(false);
+  const [savedDecks, setSavedDecks] = useState(()=>{ try{ return JSON.parse(localStorage.getItem('savedDecks')||'[]'); }catch{ return []; } });
+  const [showSavedDecks, setShowSavedDecks] = useState(false);
+  const [hoverCard, setHoverCard] = useState(null);
+  const [hoverPos, setHoverPos] = useState({x:0,y:0});
 
   const commanderSectionRef = useRef(null);
+
+  // URL params: load config from URL on mount
+  useEffect(()=>{
+    try{
+      const p=new URLSearchParams(window.location.search);
+      if(p.has('ci')) setDesiredCI(p.get('ci'));
+      if(p.has('cmd')){ setCommanderMode('select'); setChosenCommander(p.get('cmd')); }
+      if(p.has('mech')) setMechanics(p.get('mech').split(',').filter(Boolean));
+      if(p.has('budget')) setDeckBudget(Number(p.get('budget'))||0);
+      if(p.has('maxprice')) setMaxCardPrice(Number(p.get('maxprice'))||0);
+      if(p.has('lands')) setTargetLands(Number(p.get('lands'))||37);
+    }catch{}
+  },[]);
+
+  const shareUrl=()=>{
+    const p=new URLSearchParams();
+    if(commanderMode==='select' && chosenCommander) p.set('cmd', chosenCommander);
+    if(desiredCI) p.set('ci', desiredCI);
+    if(mechanics.length) p.set('mech', mechanics.join(','));
+    if(deckBudget) p.set('budget', String(deckBudget));
+    if(maxCardPrice) p.set('maxprice', String(maxCardPrice));
+    if(targetLands!==37) p.set('lands', String(targetLands));
+    const url=`${window.location.origin}${window.location.pathname}?${p.toString()}`;
+    navigator.clipboard.writeText(url);
+    setError(""); setLimitNotice("Lien copié !"); setTimeout(()=>setLimitNotice(""),2000);
+  };
+
   const selectedCommanderCard = useCommanderResolution(commanderMode, chosenCommander, setDesiredCI, setError);
   const toggleMechanic=(key)=> setMechanics(prev=> prev.includes(key)? prev.filter(k=>k!==key) : (prev.length>=5?(setLimitNotice("Maximum 5 mécaniques"), setTimeout(()=>setLimitNotice(""),1500), prev):[...prev,key]));
 
   /*********** Generation ***********/
   const mechanicScore=(card)=> mechanics.length? MECHANIC_TAGS.reduce((s,m)=> s + (mechanics.includes(m.key) && m.matchers.some(k=>oracle(card).includes(k.toLowerCase()))?1:0), 0) : 0;
   const sortByPreference=(pool)=>{ const rb=new Map(pool.map(c=>[nameOf(c), Math.random()])); return [...pool].sort((a,b)=>{ const owA=ownedMap.has(nameOf(a).toLowerCase())?1:0, owB=ownedMap.has(nameOf(b).toLowerCase())?1:0; const sa=weightOwned*owA + weightEdhrec*edhrecScore(a) + 0.25*mechanicScore(a); const sb=weightOwned*owB + weightEdhrec*edhrecScore(b) + 0.25*mechanicScore(b); if(sa!==sb) return sb-sa; const pA=priceEUR(a), pB=priceEUR(b); return pA!==pB? pA-pB : rb.get(nameOf(a))-rb.get(nameOf(b)); }); };
-  const greedyPickUnique=(sortedPool, need, banned, currentCost, budget)=>{ const picks=[]; const taken=new Set(banned); let cost=currentCost; for(const c of sortedPool){ if(picks.length>=need) break; const n=nameOf(c); if(taken.has(n)) continue; const p=priceEUR(c); if(budget>0 && (cost+p)>budget) continue; picks.push(c); taken.add(n); cost+=p; } return {picks,cost}; };
+  const greedyPickUnique=(sortedPool, need, banned, currentCost, budget)=>{ const picks=[]; const taken=new Set(banned); let cost=currentCost; const maxP=Number(maxCardPrice)||0; for(const c of sortedPool){ if(picks.length>=need) break; const n=nameOf(c); if(taken.has(n)) continue; const p=priceEUR(c); if(maxP>0 && p>maxP) continue; if(budget>0 && (cost+p)>budget) continue; picks.push(c); taken.add(n); cost+=p; } return {picks,cost}; };
   const buildManaBase=(ci, basicTarget)=>{ const colors=(ci||"").split("").filter(Boolean); const basicsByColor={W:"Plains",U:"Island",B:"Swamp",R:"Mountain",G:"Forest"}; if(colors.length===0) return basicTarget>0?{ Wastes: basicTarget }:{}; const per=Math.floor(basicTarget/colors.length); let rem=basicTarget - per*colors.length; const lands={}; for(const c of colors){ const n=basicsByColor[c]; lands[n]=per+(rem>0?1:0); rem--; } return lands; };
   const countCats=(cards)=> cards.reduce((a,c)=>({ ramp:a.ramp+(RE.RAMP.test(oracle(c))||((c.type_line||'').toLowerCase().includes('artifact')&&oracle(c).includes('add one mana'))?1:0), draw:a.draw+(RE.DRAW.test(oracle(c))?1:0), removal:a.removal+(RE.REMOVAL.test(oracle(c))?1:0), wraths:a.wraths+(RE.WRATHS.test(oracle(c))?1:0)}),{ramp:0,draw:0,removal:0,wraths:0});
   const balanceSpells=(picks, pool, budget, spent)=>{ const TARGETS={ ramp:targets.ramp.min, draw:targets.draw.min, removal:targets.removal.min, wraths:targets.wraths.min }; const byName=new Set(picks.map(nameOf)); const counts=countCats(picks); const sorted=sortByPreference(pool); const fits=(cat,c)=> (cat==='ramp'&&RE.RAMP.test(oracle(c)))||(cat==='draw'&&RE.DRAW.test(oracle(c)))||(cat==='removal'&&RE.REMOVAL.test(oracle(c)))||(cat==='wraths'&&RE.WRATHS.test(oracle(c))); const res=[...picks]; for(const cat of Object.keys(TARGETS)){ if(counts[cat]>=TARGETS[cat]) continue; for(const c of sorted){ const n=nameOf(c); if(byName.has(n)) continue; const p=priceEUR(c); if(budget>0 && (spent+p)>budget) continue; if(!fits(cat,c)) continue; const idx=res.findIndex(x=>!fits(cat,x)); if(idx>=0){ byName.delete(nameOf(res[idx])); res[idx]=c; byName.add(n); counts[cat]++; spent+=p; } if(counts[cat]>=TARGETS[cat]) break; } } return {picks:res,spent,targets:TARGETS,counts}; };
@@ -403,12 +488,24 @@ export default function App(){
   };
   const maybeAddBackground=async(primary)=>{ const info=getPartnerInfo(primary); if(!allowBackground || !info || info.type!=="background") return null; const q=["legal:commander","type:background","game:paper",identityToQuery(getCI(primary)||"wubrg")].join(" "); for(let i=0;i<10;i++){ const c=await sf.random(q); if(!isCommanderLegal(c)) continue; return c; } return null; };
   const landFitsCI=(card, ci)=>{ const text=oracle(card); const TYPE_TO_COLOR={plains:"W",island:"U",swamp:"B",mountain:"R",forest:"G"}; const mentioned=[]; for(const [type,color] of Object.entries(TYPE_TO_COLOR)){ if(text.includes(type)) mentioned.push(color); } if(mentioned.length===0) return true; const ciSet=new Set((ci||"").split("").filter(Boolean)); return mentioned.some(c=>ciSet.has(c)); };
-  const fetchPool=async(ci)=>{ const base=`legal:commander game:paper ${identityToQuery(ci)} -is:funny`; const mech = mechanics.length ? ` (${mechanics.map(k=>{ const tag=MECHANIC_TAGS.find(m=>m.key===k); if(!tag) return ""; const parts=tag.matchers.map(m=>`o:\"${m}\"`).join(" or "); return `(${parts})`; }).join(" or ")})` : ""; const spellsQ=`${base} -type:land -type:background${mech}`; const landsQ =`${base} type:land -type:basic`; const gather=async(q,b,pages=2)=>{ let page=await sf.search(q,{unique:"cards", order:"random"}); b.push(...page.data); for(let i=1;i<pages && page.has_more;i++){ await sleep(100); page=await fetch(page.next_page).then(r=>r.json()); b.push(...page.data);} }; const spells=[], lands=[]; await gather(spellsQ,spells,2); await gather(landsQ,lands,1); return { spells:distinctByName(spells).filter(isCommanderLegal), lands:distinctByName(lands).filter(c=>isCommanderLegal(c) && landFitsCI(c, ci)) }; };
+  const fetchPool=async(ci)=>{ const base=`legal:commander game:paper ${identityToQuery(ci)} -is:funny`; const mech = mechanics.length ? ` (${mechanics.map(k=>{ const tag=MECHANIC_TAGS.find(m=>m.key===k); if(!tag) return ""; const parts=tag.matchers.map(m=>`o:\"${m}\"`).join(" or "); return `(${parts})`; }).join(" or ")})` : ""; const spellsQ=`${base} -type:land -type:background${mech}`; const landsQ =`${base} type:land -type:basic`; const gather=async(q,b,pages=2)=>{ let page=await sf.search(q,{unique:"cards", order:"random"}); b.push(...page.data); for(let i=1;i<pages && page.has_more;i++){ await sleep(100); page=await fetch(page.next_page).then(r=>r.json()); b.push(...page.data);} }; const spells=[], lands=[]; await gather(spellsQ,spells,4); await gather(landsQ,lands,2); return { spells:distinctByName(spells).filter(isCommanderLegal), lands:distinctByName(lands).filter(c=>isCommanderLegal(c) && landFitsCI(c, ci)) }; };
   async function buildLandCards(landsMap){ const out=[]; for(const [n,q] of Object.entries(landsMap)){ try{ const b=await bundleByName(n); out.push({...b, qty:q}); } catch { out.push({ name:n, qty:q, image:"", small:"", oracle_en:"", mana_cost:"", cmc:0, prices:{}, scryfall_uri:"" }); } await sleep(60);} return out; }
-  const generate=async()=>{ setError(""); setLoading(true); setDeck(null); try{
+  const generate=async()=>{ setError(""); setLoading(true); setDeck(null); setGenPhase("Recherche du commandant…"); try{
       const primary = await pickCommander(commanderMode==='random'? desiredCI : getCI(selectedCommanderCard));
       let cmdrs=[primary]; const partner=await maybeAddPartner(primary); const background=await maybeAddBackground(primary); if(partner && background) cmdrs=[primary,partner]; else if(partner) cmdrs=[primary,partner]; else if(background) cmdrs=[primary,background]; let ci=getCI(primary); if(cmdrs.length>1) for(const c of cmdrs) ci=unionCI(ci,getCI(c));
+      setGenPhase("Récupération du pool de cartes…");
       const pool=await fetchPool(ci);
+      setGenPhase("Ajout des mana rocks prioritaires…");
+      // Inject staple mana rocks
+      const ciSet=new Set((ci||"").split("").filter(Boolean));
+      const eligibleRocks=STAPLE_ROCKS.filter(r=>!r.ci || r.ci.split("").every(c=>ciSet.has(c)));
+      const rockCards=[];
+      for(const r of eligibleRocks.slice(0,6)){
+        try{ const c=await sf.namedExact(r.name); if(isCommanderLegal(c) && !pool.spells.some(s=>nameOf(s)===r.name)){ rockCards.push(c); } }catch{}
+        await sleep(60);
+      }
+      pool.spells.unshift(...rockCards);
+      setGenPhase("Sélection des sorts…");
       const totalBudget=Number(deckBudget)||0; let spent=cmdrs.reduce((s,c)=>s+priceEUR(c),0); if(totalBudget>0 && spent>totalBudget) throw new Error(`Le budget (${totalBudget.toFixed(2)}€) est déjà dépassé par le coût des commandants (${spent.toFixed(2)}€).`);
       const total=100; const landsTarget=Math.max(32, Math.min(40, targetLands)); const spellsTarget=total - cmdrs.length - landsTarget;
       const spellsPref=sortByPreference(pool.spells); const landsPref=sortByPreference(pool.lands);
@@ -416,8 +513,10 @@ export default function App(){
       const balanced=balanceSpells(pickedSpells, pool.spells, totalBudget, spent); pickedSpells=balanced.picks; spent=balanced.spent;
       const maxNonbasics=Math.min(Math.floor(landsTarget*0.5), landsPref.length); const chosenNonbasics=[]; for(const nb of landsPref){ if(chosenNonbasics.length>=maxNonbasics) break; const p=priceEUR(nb); if(totalBudget>0 && (spent+p)>totalBudget) continue; chosenNonbasics.push(nb); spent+=p; } const basicsNeeded=Math.max(landsTarget - chosenNonbasics.length, 0); const landsMap=buildManaBase(ci, basicsNeeded); for(const nb of chosenNonbasics){ landsMap[nameOf(nb)] = (landsMap[nameOf(nb)]||0)+1; }
       const currentCount=cmdrs.length + pickedSpells.length + Object.values(landsMap).reduce((a,b)=>a+b,0); let missing=100-currentCount; const basicsByColor={W:"Plains",U:"Island",B:"Swamp",R:"Mountain",G:"Forest"}; const firstBasic=(ci.split("")[0] && basicsByColor[ci.split("")[0]]) || "Wastes"; while(missing>0){ landsMap[firstBasic]=(landsMap[firstBasic]||0)+1; missing--; }
+      setGenPhase("Construction de la mana base…");
       const commandersFull = cmdrs.map(bundleCard);
       const nonlandCards = pickedSpells.map(bundleCard);
+      setGenPhase("Chargement des images…");
       const landCards = await buildLandCards(landsMap);
       setDeck({ colorIdentity:ci,
         commanders:cmdrs.map(nameOf), commandersFull,
@@ -425,7 +524,21 @@ export default function App(){
         nonlandCards,
         lands:landsMap, landCards,
         budget:totalBudget, spent:Number(spent.toFixed(2)), balanceTargets:targets, balanceCounts:countCats(pickedSpells) });
-    }catch(e){ setError(e.message||String(e)); } finally{ setLoading(false); } };
+    }catch(e){ setError(e.message||String(e)); } finally{ setLoading(false); setGenPhase(""); } };
+
+  // Keyboard shortcuts
+  useEffect(()=>{
+    const handler=(e)=>{
+      // Escape: close modal or saved decks
+      if(e.key==='Escape'){ if(showModal){ setShowModal(false); e.preventDefault(); } else if(showSavedDecks){ setShowSavedDecks(false); e.preventDefault(); } }
+      // Ctrl+G: generate
+      if((e.ctrlKey||e.metaKey) && e.key==='g'){ e.preventDefault(); if(!loading) generate(); }
+      // Ctrl+Shift+C: copy list
+      if((e.ctrlKey||e.metaKey) && e.shiftKey && e.key==='C'){ e.preventDefault(); copyList(); }
+    };
+    document.addEventListener('keydown', handler);
+    return ()=>document.removeEventListener('keydown', handler);
+  });
 
   // Auto-scroll on mobile
   useEffect(()=>{
@@ -443,12 +556,21 @@ export default function App(){
   const mtgoExport=(deck)=>{ const lines=[]; deck.commanders.forEach(c=>lines.push(`1 ${c}`)); Object.entries(deck.nonlands).forEach(([n,q])=>lines.push(`${q} ${n}`)); Object.entries(deck.lands).forEach(([n,q])=>lines.push(`${q} ${n}`)); return lines.join("\n"); };
   const exportTxt=()=>{ if(deck) download("commander-deck.txt", mtgoExport(deck)); };
   const exportJson=()=>{ if(deck) download("commander-deck.json", JSON.stringify(deck,null,2)); };
+  const moxfieldExport=(deck)=>{ const lines=[]; deck.commanders.forEach(c=>lines.push(`1 ${c} *CMDR*`)); Object.entries(deck.nonlands).forEach(([n,q])=>lines.push(`${q} ${n}`)); Object.entries(deck.lands).forEach(([n,q])=>lines.push(`${q} ${n}`)); return lines.join("\n"); };
+  const archidektExport=(deck)=>{ const lines=[]; lines.push("// Commander"); deck.commanders.forEach(c=>lines.push(`1x ${c} [Commander]`)); lines.push("// Deck"); Object.entries(deck.nonlands).forEach(([n,q])=>lines.push(`${q}x ${n}`)); Object.entries(deck.lands).forEach(([n,q])=>lines.push(`${q}x ${n}`)); return lines.join("\n"); };
+  const exportMoxfield=()=>{ if(deck) download("deck-moxfield.txt", moxfieldExport(deck)); };
+  const exportArchidekt=()=>{ if(deck) download("deck-archidekt.txt", archidektExport(deck)); };
   const copyList=()=>{ if(!deck) return; const lines=[`// CI: ${deck.colorIdentity||"(Colorless)"} • Budget: ${deck.budget||0}€ • Coût estimé: ${deck.spent||0}€`, ...deck.commanders.map(c=>`1 ${c} // Commander`), ...Object.entries(deck.nonlands).map(([n,q])=>`${q} ${n}`), ...Object.entries(deck.lands).map(([n,q])=>`${q} ${n}`)]; navigator.clipboard.writeText(lines.join("\n")); };
 
   /******** Collection ********/
   const handleCollectionFile=async(f)=>{ if(!f) return; const parsed=await parseCollectionFile(f); const entry={ id:`${Date.now()}-${Math.random().toString(16).slice(2)}`, name:f.name, map:parsed }; setUploadedFiles(prev=>{ const next=[...prev,entry]; const merged=new Map(); for(const file of next){ for(const [k,q] of file.map){ merged.set(k,(merged.get(k)||0)+q); } } setOwnedMap(merged); return next; }); };
   const removeUploadedFile=(id)=> setUploadedFiles(prev=>{ const next=prev.filter(x=>x.id!==id); const merged=new Map(); for(const file of next){ for(const [k,q] of file.map){ merged.set(k,(merged.get(k)||0)+q); } } setOwnedMap(merged); return next; });
   const clearCollection=()=>{ setOwnedMap(new Map()); setUploadedFiles([]); };
+
+  // Deck saving
+  const saveDeck=()=>{ if(!deck) return; const entry={ id:Date.now(), name:deck.commanders.join(' + '), ci:deck.colorIdentity, date:new Date().toLocaleDateString('fr-FR'), deck }; const updated=[entry,...savedDecks].slice(0,20); setSavedDecks(updated); try{ localStorage.setItem('savedDecks', JSON.stringify(updated)); }catch{} };
+  const loadDeck=(entry)=>{ setDeck(entry.deck); setShowSavedDecks(false); };
+  const deleteSavedDeck=(id)=>{ const updated=savedDecks.filter(d=>d.id!==id); setSavedDecks(updated); try{ localStorage.setItem('savedDecks', JSON.stringify(updated)); }catch{} };
 
   // Reset all
   const resetAll=()=>{ setLoading(false); setError(""); setDeck(null); setCommanderMode("random"); setChosenCommander(""); setAllowPartner(true); setAllowBackground(true); setDesiredCI(""); setTargetLands(37); setDeckBudget(0); setMechanics([]); setLimitNotice(""); setWeightOwned(1.0); setWeightEdhrec(1.0); setTargets({ ramp:{min:10,max:12}, draw:{min:9,max:12}, removal:{min:8,max:10}, wraths:{min:3,max:5} }); clearCollection(); setShowModal(false); setModalCard(null); setModalOwned(false); };
@@ -492,7 +614,10 @@ export default function App(){
             <button className="btn-ghost rounded-full p-2" onClick={()=> setTheme(theme==='dark' ? 'light' : 'dark')} aria-label={theme==='dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}>
               {theme==='dark' ? <Sun className="h-4 w-4"/> : <Moon className="h-4 w-4"/>}
             </button>
+            <button className="btn-ghost rounded-full p-2" onClick={shareUrl} aria-label="Copier le lien de partage" title="Partager config"><Link2 className="h-4 w-4"/></button>
+            <button className="btn-ghost rounded-full p-2" onClick={()=>setShowSavedDecks(!showSavedDecks)} aria-label="Decks sauvegardés" title="Historique"><History className="h-4 w-4"/></button>
             {deck && <>
+              <button className="btn-ghost rounded-full p-2" onClick={saveDeck} aria-label="Sauvegarder le deck" title="Sauvegarder"><Save className="h-4 w-4"/></button>
               <button className="btn-ghost rounded-full p-2" onClick={resetAll} aria-label="Recommencer à zéro" title="Reset"><RotateCcw className="h-4 w-4"/></button>
               <button className="btn-ghost rounded-full p-2" onClick={copyList} aria-label="Copier la liste"><Copy className="h-4 w-4"/></button>
               <button className="btn text-xs hidden sm:inline-flex" onClick={exportJson}><Download className="h-3.5 w-3.5"/>JSON</button>
@@ -597,6 +722,10 @@ export default function App(){
                 <label className="block text-sm mb-2">Budget max (EUR)</label>
                 <input type="number" min={0} placeholder="0 = illimité" value={deckBudget||''} onChange={e=>setDeckBudget(Number(e.target.value||0))} className="input text-sm" aria-label="Budget en euros"/>
               </div>
+              <div>
+                <label className="block text-sm mb-2">Prix max par carte (EUR)</label>
+                <input type="number" min={0} step={0.5} placeholder="0 = illimité" value={maxCardPrice||''} onChange={e=>setMaxCardPrice(Number(e.target.value||0))} className="input text-sm" aria-label="Prix max par carte"/>
+              </div>
 
               <div className="pt-2 space-y-3 border-t" style={{borderColor:'var(--border)'}}>
                 <Toggle checked={allowPartner} onChange={setAllowPartner} label="Autoriser Partner" description="Ajoute un partenaire si le commandant le permet"/>
@@ -672,6 +801,34 @@ export default function App(){
               </div>
             </section>
 
+            {/* Saved decks */}
+            {showSavedDecks && (
+              <section className="panel p-5 animate-fade-in">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <History className="h-4 w-4 text-muted"/>
+                    <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">Decks sauvegardés</h2>
+                  </div>
+                  <button className="btn-ghost rounded-full p-1.5" onClick={()=>setShowSavedDecks(false)}><X className="h-4 w-4"/></button>
+                </div>
+                {savedDecks.length===0 ? (
+                  <p className="text-sm text-muted">Aucun deck sauvegardé.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {savedDecks.map(s=> (
+                      <div key={s.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl" style={{background:'var(--surface-strong)', border:'1px solid var(--border)'}}>
+                        <button className="text-left min-w-0 flex-1" onClick={()=>loadDeck(s)}>
+                          <div className="text-sm font-medium truncate">{s.name}</div>
+                          <div className="text-xs text-muted">{s.ci || 'C'} · {s.date}</div>
+                        </button>
+                        <button className="btn-ghost p-1 rounded-lg flex-shrink-0" onClick={()=>deleteSavedDeck(s.id)}><Trash2 className="h-3.5 w-3.5"/></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
             {/* ═══ RESULTS ═══ */}
             {!deck && !loading && (
               <div className="panel p-12 text-center">
@@ -686,7 +843,8 @@ export default function App(){
             {loading && (
               <div className="panel p-12 text-center animate-fade-in">
                 <RefreshCcw className="h-8 w-8 mx-auto mb-4 animate-spin" style={{color:'var(--accent)'}}/>
-                <p className="text-sm text-secondary">Génération en cours… Scryfall peut prendre quelques secondes.</p>
+                <p className="text-sm font-medium mb-1">{genPhase || "Génération en cours…"}</p>
+                <p className="text-xs text-muted">Scryfall peut prendre quelques secondes.</p>
               </div>
             )}
 
@@ -752,7 +910,7 @@ export default function App(){
                           <h3 className="section-subtitle mb-3">{label} <span className="text-muted font-normal">({cards.length})</span></h3>
                           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
                             {cards.map((c,idx)=> (
-                              <CardTile key={c.name+idx} card={c} owned={isOwned(c.name)} onOpen={(cc, ow)=>{setModalCard(cc); setModalOwned(ow); setShowModal(true);}}/>
+                              <CardTile key={c.name+idx} card={c} owned={isOwned(c.name)} onOpen={(cc, ow)=>{setModalCard(cc); setModalOwned(ow); setShowModal(true);}} onHover={(card,pos)=>{setHoverCard(card);setHoverPos(pos);}} onHoverEnd={()=>setHoverCard(null)}/>
                             ))}
                           </div>
                         </div>
@@ -767,7 +925,7 @@ export default function App(){
                   {Array.isArray(deck.landCards) && deck.landCards.length>0 ? (
                     <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
                       {deck.landCards.map((lc,idx)=> (
-                        <CardTile key={lc.name+idx} card={lc} qty={lc.qty} owned={isOwned(lc.name)} onOpen={(cc, ow)=>{setModalCard(cc); setModalOwned(ow); setShowModal(true);}}/>
+                        <CardTile key={lc.name+idx} card={lc} qty={lc.qty} owned={isOwned(lc.name)} onOpen={(cc, ow)=>{setModalCard(cc); setModalOwned(ow); setShowModal(true);}} onHover={(card,pos)=>{setHoverCard(card);setHoverPos(pos);}} onHoverEnd={()=>setHoverCard(null)}/>
                       ))}
                     </div>
                   ) : (
@@ -806,6 +964,11 @@ export default function App(){
                         </div>
                       ))}
                     </div>
+                    {deck.nonlandCards && deck.nonlandCards.length > 0 && (
+                      <div className="mt-4 p-3 rounded-xl" style={{background:'var(--surface)', border:'1px solid var(--border)'}}>
+                        <ManaCurve cards={[...(deck.commandersFull||[]), ...deck.nonlandCards]}/>
+                      </div>
+                    )}
                   </section>
                 )}
 
@@ -814,6 +977,8 @@ export default function App(){
                   <button className="btn" onClick={copyList}><Copy className="h-4 w-4"/>Copier</button>
                   <button className="btn" onClick={exportJson}><Download className="h-4 w-4"/>JSON</button>
                   <button className="btn-primary" onClick={exportTxt}><Download className="h-4 w-4"/>Export TXT</button>
+                  <button className="btn" onClick={exportMoxfield}><ExternalLink className="h-4 w-4"/>Moxfield</button>
+                  <button className="btn" onClick={exportArchidekt}><ExternalLink className="h-4 w-4"/>Archidekt</button>
                   <button className="btn" onClick={reequilibrer} disabled={loading}><Sparkles className="h-4 w-4"/>Rééquilibrer</button>
                   <button className="btn-primary" onClick={generate} disabled={loading}><Shuffle className="h-4 w-4"/>Regénérer</button>
                   <button className="btn" onClick={resetAll}><RotateCcw className="h-4 w-4"/>Recommencer</button>
@@ -824,6 +989,7 @@ export default function App(){
         </div>
       </main>
 
+      <HoverPreview card={hoverCard} pos={hoverPos}/>
       <CardModal open={showModal} card={modalCard} owned={modalOwned} onClose={()=>setShowModal(false)}/>
 
       <footer className="max-w-7xl mx-auto px-4 sm:px-6 py-6 text-xs text-muted no-print">
